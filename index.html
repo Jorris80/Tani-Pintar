@@ -1068,8 +1068,8 @@ if ('serviceWorker' in navigator) {
 <script>
 
 /* Versi antarmuka. HARUS naik bersama APP_VERSI di Code.gs. */
-var VERSI_KLIEN = '1.5.0';
-var TANGGAL_RILIS_KLIEN = '2026-09-03';
+var VERSI_KLIEN = '1.6.0';
+var TANGGAL_RILIS_KLIEN = '2026-09-04';
 
 /* ============================================================
    TaniPintar — inti aplikasi
@@ -2101,6 +2101,7 @@ var TAB = [
   { k: 'tanibot', n: 'TaniBot', ik: '🤖' },
   { k: 'edukasi', n: 'Edukasi', ik: '📚' },
   { k: 'analisis', n: 'Analisis', ik: '📈' },
+  { k: 'laporan', n: 'Laporan', ik: '📊' },
   { k: 'penyuluh', n: 'Penyuluh', ik: '🛡️', peran: 'penyuluh' },
   { k: 'setelan', n: 'Setelan', ik: '⚙️' },
   { k: 'tentang', n: 'Tentang', ik: 'ℹ️' }
@@ -2266,6 +2267,7 @@ function render() {
     case 'edukasi': html += tabEdukasi(); break;
     case 'analisis': html += tabAnalisis(); break;
     case 'penyuluh': html += bolehKelola() ? tabPenyuluh() : '<p>Tidak berwenang.</p>'; break;
+    case 'laporan': html += tabLaporan(); break;
     case 'setelan': html += tabSetelan(); break;
     case 'tentang': html += tabTentang(); break;
     default: html += tabDasbor();
@@ -2308,6 +2310,20 @@ function spandukDemo() {
 
 function spandukStatus() {
   var html = spandukDemo();
+
+  /* Peringatan beda versi tampil di SETIAP tab, bukan hanya di halaman
+     Tentang. Keadaan ini membuat sebagian fitur berhenti bekerja tanpa
+     pesan galat apa pun — pengguna yang tidak pernah membuka Tentang
+     tidak akan pernah tahu sebabnya. */
+  if (S.versiPeladen && S.versiPeladen !== VERSI_KLIEN) {
+    html += '<div class="spanduk merah takCetak"><span>⚠️</span><span>' +
+      '<b>Versi antarmuka dan peladen berbeda — v' + esc(VERSI_KLIEN) +
+      ' vs v' + esc(S.versiPeladen) + '</b>' +
+      'Sebagian fitur dapat berhenti bekerja tanpa pesan galat. Salin ulang seluruh ' +
+      'berkas dari paket yang sama, lalu terapkan ulang Web App.' +
+      '<button class="tbl kecil bahaya" style="margin-top:6px" ' +
+      'onclick="pindah(\'tentang\')">Lihat rinciannya</button></span></div>';
+  }
 
   if (!S.daring) {
     html += '<div class="spanduk kuning"><span>📴</span><span><b>Mode luring</b>' +
@@ -8302,6 +8318,11 @@ function bagianVersi() {
      daftar perubahan kode. Pengguna perlu tahu apa yang berubah bagi
      dirinya, bukan nama fungsi yang diperbaiki. */
   html += '<div class="kartu"><h3>Riwayat perubahan</h3>' +
+    catatanVersi('1.6.0', '4 September 2026', [
+      'Rekap bulanan: ringkasan, pembanding bulan sebelumnya, dan catatan penjelas',
+      'Rekap tahunan: rincian dua belas bulan dan pembanding tahun sebelumnya',
+      'Laporan dapat dicetak dan diekspor ke CSV'
+    ]) +
     catatanVersi('1.5.0', '3 September 2026', [
       'Tombol Kembali di ponsel tidak lagi langsung menutup aplikasi',
       'Tombol silang (×) untuk mengosongkan isian dengan sekali tekan',
@@ -8645,6 +8666,871 @@ function bukaDokumenLegal(mana) {
   S.subtab['tentang'] = mana;
   modalBuka(mana === 'privasi' ? 'Pemberitahuan Privasi' : 'Syarat & Ketentuan',
             mana === 'privasi' ? bagianPrivasi() : bagianSyarat());
+}
+
+
+/* ============================================================
+   LAPORAN & REKAP — bulanan dan tahunan
+   ============================================================
+   Rumus di berkas ini adalah salinan dari Laporan.gs. Disengaja:
+   rekap harus tetap terbuka saat luring, dan angka yang berbeda
+   antara layar dan cetakan membuat pengguna kehilangan kepercayaan
+   pada kedua-duanya.
+
+   Bila salah satunya diubah, ubah keduanya.
+   ============================================================ */
+
+var _laporan = { data: null, jenis: 'bulanan', tahun: 0, bulan: 0, sumber: '' };
+
+var BULAN_ID = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli',
+                'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+
+function tabLaporan() {
+  if (!_laporan.tahun) {
+    var awal = periodeAwal();
+    _laporan.tahun = awal.tahun;
+    _laporan.bulan = awal.bulan;
+  }
+
+  var sub = subAktif('laporan', 'bulanan');
+  var html = pil('laporan', [
+    { k: 'bulanan', n: 'Rekap Bulanan' },
+    { k: 'tahunan', n: 'Rekap Tahunan' }
+  ], 'bulanan');
+
+  html += (sub === 'tahunan') ? panelTahunan() : panelBulanan();
+  return html;
+}
+
+/* ------------------------------------------------------------
+   PEMILIH PERIODE
+   ------------------------------------------------------------ */
+
+/**
+ * Periode yang dibuka pertama kali: bulan TERAKHIR yang benar-benar
+ * punya catatan.
+ *
+ * Membuka bulan berjalan terasa lebih masuk akal, tetapi pada awal
+ * bulan — atau pada kelompok yang mencatatnya menyusul — laporan yang
+ * terbuka akan kosong seluruhnya. Pengguna yang melihat semua angka nol
+ * pada percobaan pertama menyimpulkan fiturnya rusak, bukan bahwa
+ * datanya memang belum ada.
+ */
+function periodeAwal() {
+  var sekarang = new Date();
+  var terbaru = '';
+  var sumber = [['biaya', 'tanggal'], ['panen', 'tanggal'], ['aktivitas', 'waktu']];
+  for (var s = 0; s < sumber.length; s++) {
+    var baris = S.data[sumber[s][0]] || [];
+    for (var i = 0; i < baris.length; i++) {
+      var t = String(baris[i][sumber[s][1]] || '').substring(0, 7);
+      if (/^\d{4}-\d{2}$/.test(t) && t > terbaru) terbaru = t;
+    }
+  }
+  if (!terbaru) {
+    return { tahun: sekarang.getFullYear(), bulan: sekarang.getMonth() + 1 };
+  }
+  return { tahun: Number(terbaru.substring(0, 4)),
+           bulan: Number(terbaru.substring(5, 7)) };
+}
+
+function tahunTersediaLokal() {
+  var ada = {};
+  var sumber = [['biaya', 'tanggal'], ['panen', 'tanggal'], ['aktivitas', 'waktu'],
+                ['kerusakan', 'tanggal'], ['jadwal', 'tanggal']];
+  for (var s = 0; s < sumber.length; s++) {
+    var baris = S.data[sumber[s][0]] || [];
+    for (var i = 0; i < baris.length; i++) {
+      var t = String(baris[i][sumber[s][1]] || '').substring(0, 4);
+      if (/^\d{4}$/.test(t)) ada[t] = true;
+    }
+  }
+  var daftar = [];
+  for (var y in ada) daftar.push(Number(y));
+  var kini = new Date().getFullYear();
+  if (daftar.indexOf(kini) < 0) daftar.push(kini);
+  daftar.sort(function (a, b) { return b - a; });
+  return daftar;
+}
+
+function pemilihPeriode(denganBulan) {
+  var tahun = tahunTersediaLokal();
+  var opsiTahun = tahun.map(function (t) {
+    return '<option value="' + t + '"' +
+      (t === _laporan.tahun ? ' selected' : '') + '>' + t + '</option>';
+  }).join('');
+
+  var html = '<div class="kartu takCetak"><div class="baris">';
+  if (denganBulan) {
+    var opsiBulan = '';
+    for (var b = 1; b <= 12; b++) {
+      opsiBulan += '<option value="' + b + '"' +
+        (b === _laporan.bulan ? ' selected' : '') + '>' + BULAN_ID[b - 1] + '</option>';
+    }
+    html += '<label class="ruas" style="flex:1;min-width:130px;margin:0">' +
+      '<span class="nama">Bulan</span>' +
+      '<select onchange="_laporan.bulan=Number(this.value);muatLaporan()">' +
+      opsiBulan + '</select></label>';
+  }
+  html += '<label class="ruas" style="flex:1;min-width:110px;margin:0">' +
+    '<span class="nama">Tahun</span>' +
+    '<select onchange="_laporan.tahun=Number(this.value);muatLaporan()">' +
+    opsiTahun + '</select></label>' +
+    '<button class="tbl sekunder kecil" style="align-self:flex-end" ' +
+    'onclick="muatLaporan()">🔄 Muat ulang</button>' +
+    '</div></div>';
+  return html;
+}
+
+/* ------------------------------------------------------------
+   PEMUATAN
+   ------------------------------------------------------------ */
+
+function muatLaporan() {
+  var jenis = subAktif('laporan', 'bulanan');
+  if (_laporan.data && _laporan.data.jenis !== jenis) _laporan.data = null;
+  _laporan.jenis = jenis;
+
+  var wadah = $('isiLaporan');
+  if (wadah) {
+    wadah.innerHTML = '<div class="spanduk biru"><span class="muat"></span>' +
+      '<span>Menyusun laporan…</span></div>';
+  }
+
+  /* Luring: dihitung dari salinan lokal. Hasilnya sama karena
+     rumusnya sama, tetapi ditandai sumbernya supaya pengguna tahu
+     laporan ini belum menyertakan data yang belum tersinkron. */
+  if (!S.daring) {
+    _laporan.data = (jenis === 'tahunan')
+      ? laporanTahunanLokal(_laporan.tahun)
+      : laporanBulananLokal(_laporan.tahun, _laporan.bulan);
+    _laporan.sumber = 'lokal';
+    render();
+    return Promise.resolve();
+  }
+
+  var aksi = jenis === 'tahunan' ? 'laporan_tahunan' : 'laporan_bulanan';
+  var data = jenis === 'tahunan'
+    ? { tahun: _laporan.tahun }
+    : { tahun: _laporan.tahun, bulan: _laporan.bulan };
+
+  return panggil(aksi, data).then(function (r) {
+    _laporan.data = r;
+    _laporan.sumber = 'peladen';
+    render();
+  }).catch(function (e) {
+    /* Gagal memuat bukan berarti laporan tidak bisa dibuat. */
+    _laporan.data = (jenis === 'tahunan')
+      ? laporanTahunanLokal(_laporan.tahun)
+      : laporanBulananLokal(_laporan.tahun, _laporan.bulan);
+    _laporan.sumber = 'lokal';
+    render();
+    toast('Laporan disusun dari salinan lokal: ' + e.message, 'galat');
+  });
+}
+
+function panelBulanan() {
+  var html = pemilihPeriode(true) + '<div id="isiLaporan">';
+  if (_laporan.data && _laporan.data.jenis === 'bulanan') {
+    html += gambarLaporan(_laporan.data);
+  } else {
+    html += '<div class="kartu"><div class="kosong"><span class="muat"></span>' +
+      'Menyusun laporan…</div></div>';
+    setTimeout(muatLaporan, 30);
+  }
+  return html + '</div>';
+}
+
+function panelTahunan() {
+  var html = pemilihPeriode(false) + '<div id="isiLaporan">';
+  if (_laporan.data && _laporan.data.jenis === 'tahunan') {
+    html += gambarLaporan(_laporan.data);
+  } else {
+    html += '<div class="kartu"><div class="kosong"><span class="muat"></span>' +
+      'Menyusun laporan…</div></div>';
+    setTimeout(muatLaporan, 30);
+  }
+  return html + '</div>';
+}
+
+/* ------------------------------------------------------------
+   PENGGAMBARAN
+   ------------------------------------------------------------ */
+
+function gambarLaporan(L) {
+  var t = L.kini.total;
+  var html = '';
+
+  /* Kepala laporan — ikut tercetak, jadi memuat identitas kelompok. */
+  html += '<div class="kartu"><div class="baris">' +
+    '<div><h2 style="margin:0">' +
+    esc(S.pengaturan.namaKelompok || S.pengaturan.namaAplikasi || 'TaniPintar') +
+    '</h2>' +
+    '<div style="font-size:1.05rem;font-weight:700;color:var(--utama2);margin-top:2px">' +
+    'Laporan ' + (L.jenis === 'tahunan' ? 'Tahunan' : 'Bulanan') + ' — ' +
+    esc(L.judul) + '</div>' +
+    '<small style="color:var(--redup)">Periode ' + tglIndo(L.periode.dari, true) +
+    ' sampai ' + tglIndo(L.periode.sampai, true) + '</small></div>' +
+    '<div class="kanan takCetak">' +
+    '<button class="tbl sekunder kecil" onclick="window.print()">🖨️ Cetak</button> ' +
+    '<button class="tbl sekunder kecil" onclick="unduhLaporanCsv()">⬇️ CSV</button>' +
+    '</div></div>';
+
+  if (_laporan.sumber === 'lokal') {
+    html += '<div class="spanduk kuning"><span>📴</span><span>' +
+      '<b>Disusun dari salinan di perangkat ini</b>Catatan yang belum tersinkron ' +
+      'ke Spreadsheet belum ikut terhitung. Muat ulang saat ada sinyal untuk angka ' +
+      'yang pasti.</span></div>';
+  }
+  if (!L.kini.adaData) {
+    html += '<div class="spanduk merah"><span>📭</span><span>' +
+      '<b>Tidak ada catatan pada periode ini</b>Seluruh angka nol di bawah berarti ' +
+      'belum dicatat — bukan berarti tidak ada kegiatan.</span></div>';
+  }
+  html += '</div>';
+
+  /* Ringkasan utama */
+  html += '<div class="kisi kisi4" style="margin-bottom:12px">' +
+    kartuStat('💰', 'Rp ' + rpSingkat(t.pendapatan), 'Pendapatan',
+              deltaTeks(L.perubahan.pendapatan, L.pembanding.judul)) +
+    kartuStat('💸', 'Rp ' + rpSingkat(t.biaya), 'Biaya',
+              deltaTeks(L.perubahan.biaya, L.pembanding.judul)) +
+    kartuStat(t.laba >= 0 ? '📈' : '📉', 'Rp ' + rpSingkat(t.laba), 'Laba Bersih',
+              'Margin ' + t.marginPersen + '%') +
+    kartuStat('🌾', rp(t.kg) + ' kg', 'Total Panen',
+              t.transaksiPanen + ' transaksi') +
+    '</div>';
+
+  /* Titik impas — angka paling berguna, diberi ruang sendiri */
+  if (t.kg > 0) {
+    var sehat = t.hargaRerataPerKg >= t.bepPerKg;
+    html += '<div class="spanduk ' + (sehat ? 'hijau' : 'merah') + '">' +
+      '<span>' + (sehat ? '⚖️' : '⚠️') + '</span><span>' +
+      '<b>Titik impas Rp ' + rp(t.bepPerKg) + ' per kg · harga jual rata-rata Rp ' +
+      rp(t.hargaRerataPerKg) + ' per kg</b>' +
+      (sehat
+        ? 'Penjualan pada periode ini menutup biayanya, dengan selisih Rp ' +
+          rp(t.hargaRerataPerKg - t.bepPerKg) + ' per kg.'
+        : 'Harga jual berada DI BAWAH titik impas sebesar Rp ' +
+          rp(t.bepPerKg - t.hargaRerataPerKg) + ' per kg. Penjualan pada periode ' +
+          'ini tidak menutup biayanya.') + '</span></div>';
+  }
+
+  /* Catatan naratif — untuk dibacakan di rapat anggota */
+  if (L.catatan && L.catatan.length) {
+    html += '<div class="kartu"><h3>Catatan</h3>';
+    for (var c = 0; c < L.catatan.length; c++) {
+      var n = L.catatan[c];
+      var ikon = n.jenis === 'bahaya' ? '⚠️' : (n.jenis === 'peringatan' ? '❗'
+        : (n.jenis === 'baik' ? '✅' : (n.jenis === 'kosong' ? '📭' : 'ℹ️')));
+      var warna = n.jenis === 'bahaya' ? 'merah'
+        : (n.jenis === 'peringatan' ? 'kuning'
+          : (n.jenis === 'baik' ? 'hijau' : 'biru'));
+      html += '<div class="spanduk ' + warna + '"><span>' + ikon + '</span><span>' +
+        esc(n.teks) + '</span></div>';
+    }
+    html += '</div>';
+  }
+
+  /* Rincian bulanan pada laporan tahunan */
+  if (L.bulanan) html += bagianGrafikBulanan(L);
+
+  /* Perbandingan periode */
+  html += bagianPembanding(L);
+
+  /* Per petak */
+  html += bagianTabelPetak(L.kini.petak);
+
+  /* Biaya per kategori */
+  html += bagianKategoriBiaya(L.kini.kategoriBiaya, t.biaya);
+
+  /* Panen per komoditas */
+  html += bagianKomoditas(L.kini.komoditas);
+
+  /* Kegiatan lapangan */
+  html += bagianKegiatan(L.kini);
+
+  /* Tanda tangan — laporan ini dibawa ke rapat dan ke bank */
+  html += '<div class="kartu"><div class="kisi kisi2" style="margin-top:10px">' +
+    '<div style="text-align:center"><small style="color:var(--redup)">Disusun oleh' +
+    '</small><div style="height:52px"></div>' +
+    '<div style="border-top:1px solid var(--garis);padding-top:5px;font-size:.85rem">' +
+    esc(L.dibuatOleh || (S.pengguna ? S.pengguna.nama : '')) + '</div></div>' +
+    '<div style="text-align:center"><small style="color:var(--redup)">Mengetahui' +
+    '</small><div style="height:52px"></div>' +
+    '<div style="border-top:1px solid var(--garis);padding-top:5px;font-size:.85rem">' +
+    'Ketua Kelompok</div></div></div>' +
+    '<p style="font-size:.72rem;color:var(--redup);text-align:center;margin-top:10px">' +
+    'Dibuat ' + esc(String(L.dibuatPada || '').replace('T', ' ').substring(0, 16)) +
+    ' · ' + esc(S.pengaturan.namaAplikasi || 'TaniPintar') + ' v' + VERSI_KLIEN +
+    '</p></div>';
+
+  return html;
+}
+
+function deltaTeks(d, judulPembanding) {
+  if (!d) return '';
+  if (d.persen === null || d.persen === undefined) {
+    /* Persentase tidak dihitung karena pembaginya nol. Menyebutnya
+       "tidak ada data pembanding" menyesatkan: periodenya mungkin
+       berisi, hanya angka INI yang nol di sana. */
+    return d.nilai === 0 ? 'Sama dengan ' + judulPembanding
+      : 'Nol pada ' + judulPembanding;
+  }
+  var tanda = d.nilai > 0 ? '▲ +' : (d.nilai < 0 ? '▼ ' : '');
+  return tanda + d.persen + '% vs ' + judulPembanding;
+}
+
+/* ---------- grafik 12 bulan ---------- */
+function bagianGrafikBulanan(L) {
+  var maks = 1;
+  for (var i = 0; i < L.bulanan.length; i++) {
+    maks = Math.max(maks, L.bulanan[i].pendapatan, L.bulanan[i].biaya);
+  }
+
+  var html = '<div class="kartu"><h3>Rincian per bulan</h3>' +
+    '<div class="baris" style="font-size:.72rem;margin-bottom:8px">' +
+    '<span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;' +
+    'background:var(--utama2)"></span> Pendapatan</span>' +
+    '<span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;' +
+    'background:var(--bahaya)"></span> Biaya</span></div>';
+
+  for (var b = 0; b < L.bulanan.length; b++) {
+    var m = L.bulanan[b];
+    html += '<div style="margin-bottom:9px">' +
+      '<div class="baris" style="font-size:.78rem">' +
+      '<span style="font-weight:700">' + esc(m.nama) + '</span>' +
+      '<span class="kanan" style="color:var(--redup)">' +
+      (m.adaData
+        ? 'Rp ' + rpSingkat(m.pendapatan) + ' · Rp ' + rpSingkat(m.biaya) +
+          ' · ' + rp(m.kg) + ' kg'
+        : 'belum ada catatan') + '</span></div>' +
+      '<div class="batang" style="height:7px;margin-top:3px"><i style="width:' +
+      Math.round(m.pendapatan / maks * 100) + '%"></i></div>' +
+      '<div class="batang" style="height:7px;margin-top:2px"><i style="width:' +
+      Math.round(m.biaya / maks * 100) + '%;background:var(--bahaya)"></i></div>' +
+      '</div>';
+  }
+
+  if (L.puncakPanen && L.puncakPanen.kg > 0) {
+    html += '<hr class="pisah"><div class="kisi kisi3">' +
+      barisInfo('Panen terbesar', L.puncakPanen.nama + ' — ' +
+                rp(L.puncakPanen.kg) + ' kg') +
+      barisInfo('Laba tertinggi', L.puncakLaba
+        ? L.puncakLaba.nama + ' — Rp ' + rpSingkat(L.puncakLaba.laba) : '-') +
+      barisInfo('Laba terendah', L.terendahLaba
+        ? L.terendahLaba.nama + ' — Rp ' + rpSingkat(L.terendahLaba.laba) : '-') +
+      '</div>';
+  }
+  return html + '</div>';
+}
+
+/* ---------- pembanding ---------- */
+function bagianPembanding(L) {
+  var k = L.kini.total, l = L.pembanding.total;
+  if (!L.pembanding.adaData) {
+    return '<div class="kartu"><h3>Perbandingan</h3>' +
+      '<div class="kosong"><span class="ik">📅</span>' +
+      'Tidak ada catatan pada ' + esc(L.pembanding.judul) +
+      ', jadi tidak ada yang bisa dibandingkan.</div></div>';
+  }
+
+  function baris(label, kini, lalu, d, satuan) {
+    var warna = d.nilai === 0 ? 'var(--redup)'
+      : (d.arah === 'naik' ? 'var(--sukses)' : 'var(--bahaya)');
+    return '<tr><td>' + esc(label) + '</td>' +
+      '<td class="angka">' + satuan + rp(kini) + '</td>' +
+      '<td class="angka">' + satuan + rp(lalu) + '</td>' +
+      '<td class="angka" style="color:' + warna + ';font-weight:700">' +
+      (d.nilai > 0 ? '+' : '') + satuan + rp(d.nilai) +
+      (d.persen !== null && d.persen !== undefined
+        ? '<br><small>' + (d.nilai > 0 ? '+' : '') + d.persen + '%</small>' : '') +
+      '</td></tr>';
+  }
+
+  /* Biaya naik bukan berita buruk dengan sendirinya, jadi warnanya
+     tidak dibalik — pembacaannya diserahkan ke pengguna, yang tahu
+     apakah kenaikan itu karena pemupukan atau karena pemborosan. */
+  return '<div class="kartu"><h3>Dibanding ' + esc(L.pembanding.judul) + '</h3>' +
+    '<div class="gulir"><table><thead><tr><th>Keterangan</th>' +
+    '<th class="angka">' + esc(L.judul) + '</th>' +
+    '<th class="angka">' + esc(L.pembanding.judul) + '</th>' +
+    '<th class="angka">Selisih</th></tr></thead><tbody>' +
+    baris('Pendapatan', k.pendapatan, l.pendapatan, L.perubahan.pendapatan, 'Rp ') +
+    baris('Biaya', k.biaya, l.biaya, L.perubahan.biaya, 'Rp ') +
+    baris('Laba', k.laba, l.laba, L.perubahan.laba, 'Rp ') +
+    baris('Panen (kg)', k.kg, l.kg, L.perubahan.kg, '') +
+    baris('Titik impas per kg', k.bepPerKg, l.bepPerKg, L.perubahan.bepPerKg, 'Rp ') +
+    '</tbody></table></div></div>';
+}
+
+/* ---------- per petak ---------- */
+function bagianTabelPetak(petak) {
+  if (!petak.length) {
+    return '<div class="kartu"><h3>Rincian per petak</h3>' +
+      '<div class="kosong"><span class="ik">🌾</span>Belum ada catatan yang ' +
+      'menempel pada petak.</div></div>';
+  }
+  var html = '<div class="kartu"><h3>Rincian per petak</h3>' +
+    '<div class="gulir"><table><thead><tr><th>Petak</th>' +
+    '<th class="angka">Biaya</th><th class="angka">Pendapatan</th>' +
+    '<th class="angka">Laba</th><th class="angka">Panen</th>' +
+    '<th class="angka">BEP/kg</th><th class="angka">Laba/m²</th></tr></thead><tbody>';
+  var tot = { biaya: 0, pendapatan: 0, laba: 0, kg: 0 };
+  for (var i = 0; i < petak.length; i++) {
+    var r = petak[i];
+    tot.biaya += r.biaya; tot.pendapatan += r.pendapatan;
+    tot.laba += r.laba; tot.kg += r.kg;
+    html += '<tr><td><b>' + esc(r.nama) + '</b>' +
+      (r.komoditas ? '<br><small style="color:var(--redup)">' + esc(r.komoditas) +
+        '</small>' : '') + '</td>' +
+      '<td class="angka">' + rp(r.biaya) + '</td>' +
+      '<td class="angka">' + rp(r.pendapatan) + '</td>' +
+      '<td class="angka" style="font-weight:700;color:' +
+      (r.laba >= 0 ? 'var(--sukses)' : 'var(--bahaya)') + '">' + rp(r.laba) + '</td>' +
+      '<td class="angka">' + rp(r.kg) + ' kg</td>' +
+      '<td class="angka">' + (r.bepPerKg ? rp(r.bepPerKg) : '-') + '</td>' +
+      '<td class="angka">' + (r.labaPerM2 ? rp(r.labaPerM2) : '-') + '</td></tr>';
+  }
+  html += '</tbody><tfoot><tr style="font-weight:800"><td>TOTAL</td>' +
+    '<td class="angka">' + rp(tot.biaya) + '</td>' +
+    '<td class="angka">' + rp(tot.pendapatan) + '</td>' +
+    '<td class="angka">' + rp(tot.laba) + '</td>' +
+    '<td class="angka">' + rp(tot.kg) + ' kg</td>' +
+    '<td class="angka"></td><td class="angka"></td></tr></tfoot></table></div></div>';
+  return html;
+}
+
+/* ---------- kategori biaya ---------- */
+function bagianKategoriBiaya(kategori, totalBiaya) {
+  if (!kategori.length) return '';
+  var maks = kategori[0].nominal || 1;
+  var html = '<div class="kartu"><h3>Biaya per kategori</h3>';
+  for (var i = 0; i < kategori.length; i++) {
+    var k = kategori[i];
+    html += '<div style="margin-bottom:8px">' +
+      '<div class="baris" style="font-size:.8rem">' +
+      '<span>' + esc(k.nama) + '</span>' +
+      '<b class="kanan">Rp ' + rp(k.nominal) + ' · ' + k.persen + '%</b></div>' +
+      '<div class="batang"><i style="width:' +
+      Math.round(k.nominal / maks * 100) + '%"></i></div></div>';
+  }
+  if (kategori.length > 1) {
+    html += '<p style="font-size:.8rem;color:var(--redup);margin-top:8px">' +
+      'Kategori terbesar: <b>' + esc(kategori[0].nama) + '</b> (' +
+      kategori[0].persen + '% dari total biaya). Bila angkanya jauh melampaui ' +
+      'kategori lain, periksa apakah memang begitu atau ada catatan yang salah ' +
+      'kategori.</p>';
+  }
+  return html + '</div>';
+}
+
+/* ---------- komoditas ---------- */
+function bagianKomoditas(komoditas) {
+  if (!komoditas.length) return '';
+  var html = '<div class="kartu"><h3>Panen per komoditas</h3>' +
+    '<div class="gulir"><table><thead><tr><th>Komoditas</th>' +
+    '<th class="angka">Panen</th><th class="angka">Pendapatan</th>' +
+    '<th class="angka">Harga rerata</th><th class="angka">Transaksi</th>' +
+    '</tr></thead><tbody>';
+  for (var i = 0; i < komoditas.length; i++) {
+    var k = komoditas[i];
+    html += '<tr><td><b>' + esc(k.nama) + '</b></td>' +
+      '<td class="angka">' + rp(k.kg) + ' kg</td>' +
+      '<td class="angka">' + rp(k.pendapatan) + '</td>' +
+      '<td class="angka">' + rp(k.hargaRerata) + '</td>' +
+      '<td class="angka">' + k.transaksi + '</td></tr>';
+  }
+  return html + '</tbody></table></div></div>';
+}
+
+/* ---------- kegiatan lapangan ---------- */
+function bagianKegiatan(K) {
+  var html = '<div class="kartu"><h3>Kegiatan lapangan</h3><div class="kisi kisi4">' +
+    kartuStat('🧪', K.pupuk.selesai, 'Pemupukan Selesai',
+              K.pupuk.terlewat ? K.pupuk.terlewat + ' terlewat' : 'Tidak ada terlewat') +
+    kartuStat('📋', K.aktivitas.jumlah, 'Catatan Aktivitas',
+              K.total.jamKerja + ' jam kerja') +
+    kartuStat('🐛', K.hama.laporan, 'Laporan Hama',
+              K.hama.kerugian ? 'Rugi Rp ' + rpSingkat(K.hama.kerugian)
+                : 'Tanpa kerugian tercatat') +
+    kartuStat('📦', K.stok.keluar, 'Pengeluaran Stok',
+              'Senilai Rp ' + rpSingkat(K.stok.nilaiKeluar)) +
+    '</div>';
+
+  if (K.pokok) {
+    html += '<hr class="pisah"><h4>Per pokok</h4><div class="kisi kisi3">' +
+      barisInfo('Panen tercatat per pokok', rp(K.pokok.panenKg) + ' kg dari ' +
+                K.pokok.catatanPanen + ' catatan') +
+      barisInfo('Pokok dinyatakan mati', K.pokok.mati) +
+      barisInfo('Penyulaman', K.pokok.sulam) + '</div>';
+  }
+
+  if (K.aktivitas.perJenis.length) {
+    html += '<hr class="pisah"><h4>Aktivitas menurut jenis</h4>' +
+      '<div class="gulir"><table><thead><tr><th>Jenis</th>' +
+      '<th class="angka">Jumlah</th></tr></thead><tbody>';
+    for (var i = 0; i < K.aktivitas.perJenis.length; i++) {
+      html += '<tr><td>' + esc(K.aktivitas.perJenis[i].nama) + '</td>' +
+        '<td class="angka">' + K.aktivitas.perJenis[i].jumlah + '</td></tr>';
+    }
+    html += '</tbody></table></div>';
+  }
+
+  if (K.daftarHama && K.daftarHama.length) {
+    html += '<hr class="pisah"><h4>Laporan kerusakan pada periode ini</h4>' +
+      '<div class="gulir"><table><thead><tr><th>Tanggal</th><th>Petak</th>' +
+      '<th>Gejala</th><th>Tingkat</th><th class="angka">Kerugian</th>' +
+      '</tr></thead><tbody>';
+    for (var j = 0; j < K.daftarHama.length; j++) {
+      var h = K.daftarHama[j];
+      html += '<tr><td>' + tglIndo(h.tanggal) + '</td>' +
+        '<td>' + esc(h.petak) + '</td>' +
+        '<td>' + esc(h.gejala) + '</td>' +
+        '<td>' + esc(h.tingkat) + '</td>' +
+        '<td class="angka">' + rp(h.kerugian) + '</td></tr>';
+    }
+    html += '</tbody></table></div>';
+  }
+  return html + '</div>';
+}
+
+/* ------------------------------------------------------------
+   EKSPOR CSV
+   ------------------------------------------------------------ */
+
+function unduhLaporanCsv() {
+  if (!_laporan.data) return;
+  if (!S.daring) {
+    unduhBerkas(namaBerkasLaporan(), csvLokal(_laporan.data), 'text/csv;charset=utf-8');
+    toast('CSV disusun dari salinan lokal.', 'sukses');
+    return;
+  }
+  var d = _laporan.jenis === 'tahunan'
+    ? { jenis: 'tahunan', tahun: _laporan.tahun }
+    : { jenis: 'bulanan', tahun: _laporan.tahun, bulan: _laporan.bulan };
+  panggil('laporan_csv', d).then(function (r) {
+    unduhBerkas(r.namaBerkas, r.isi, 'text/csv;charset=utf-8');
+    toast('Berkas CSV diunduh.', 'sukses');
+  }).catch(function () {
+    /* Gagal di peladen bukan alasan untuk tidak memberi berkas apa pun:
+       laporannya sudah ada di layar, jadi CSV-nya bisa disusun di sini. */
+    unduhBerkas(namaBerkasLaporan(), csvLokal(_laporan.data), 'text/csv;charset=utf-8');
+    toast('CSV disusun dari salinan lokal.', 'sukses');
+  });
+}
+
+function namaBerkasLaporan() {
+  return 'laporan-' + (_laporan.jenis === 'tahunan'
+    ? _laporan.tahun
+    : _laporan.tahun + '-' + (_laporan.bulan < 10 ? '0' : '') + _laporan.bulan) + '.csv';
+}
+
+function barisCsvKlien(kolom) {
+  var keluar = [];
+  for (var i = 0; i < kolom.length; i++) {
+    var v = kolom[i] === null || kolom[i] === undefined ? '' : String(kolom[i]);
+    if (v.indexOf(';') >= 0 || v.indexOf('"') >= 0 || v.indexOf('\n') >= 0) {
+      v = '"' + v.replace(/"/g, '""') + '"';
+    }
+    keluar.push(v);
+  }
+  return keluar.join(';');
+}
+
+function csvLokal(L) {
+  var b = [];
+  b.push(barisCsvKlien(['Laporan', L.judul]));
+  b.push(barisCsvKlien(['Periode', L.periode.dari, 'sampai', L.periode.sampai]));
+  b.push(barisCsvKlien(['Sumber', 'salinan lokal perangkat']));
+  b.push('');
+  b.push(barisCsvKlien(['RINGKASAN']));
+  b.push(barisCsvKlien(['Pendapatan (Rp)', L.kini.total.pendapatan]));
+  b.push(barisCsvKlien(['Biaya (Rp)', L.kini.total.biaya]));
+  b.push(barisCsvKlien(['Laba (Rp)', L.kini.total.laba]));
+  b.push(barisCsvKlien(['Panen (kg)', L.kini.total.kg]));
+  b.push(barisCsvKlien(['Titik impas (Rp/kg)', L.kini.total.bepPerKg]));
+  b.push('');
+  b.push(barisCsvKlien(['RINCIAN PER PETAK']));
+  b.push(barisCsvKlien(['Petak', 'Biaya', 'Pendapatan', 'Laba', 'Panen (kg)']));
+  for (var i = 0; i < L.kini.petak.length; i++) {
+    var r = L.kini.petak[i];
+    b.push(barisCsvKlien([r.nama, r.biaya, r.pendapatan, r.laba, r.kg]));
+  }
+  return b.join('\r\n');
+}
+
+/* ============================================================
+   SALINAN RUMUS UNTUK MODE LURING
+   Sama persis dengan hitungPeriode() di Laporan.gs.
+   ============================================================ */
+
+function tglSaja(v) {
+  return String(v === null || v === undefined ? '' : v).substring(0, 10);
+}
+
+function dalamRentangLokal(t, dari, sampai) {
+  var s = tglSaja(t);
+  return s ? (s >= dari && s <= sampai) : false;
+}
+
+function rentangBulanLokal(tahun, bulan) {
+  var akhir = new Date(tahun, bulan, 0).getDate();
+  var mm = (bulan < 10 ? '0' : '') + bulan;
+  return { dari: tahun + '-' + mm + '-01',
+           sampai: tahun + '-' + mm + '-' + (akhir < 10 ? '0' : '') + akhir };
+}
+
+function hitungPeriodeLokal(dari, sampai) {
+  var total = { pendapatan: 0, biaya: 0, kg: 0, piutangBaru: 0, diterima: 0,
+                transaksiPanen: 0, catatanBiaya: 0, jamKerja: 0, luasDikerjakanM2: 0 };
+  var perPetak = {}, perKategori = {}, perKomoditas = {}, perJenis = {};
+
+  function barisPetak(id) {
+    var k = String(id || '');
+    if (!perPetak[k]) {
+      var p = k ? petakById(k) : null;
+      perPetak[k] = { petakId: k, nama: p ? p.nama : (k ? '(petak terhapus)'
+        : '(tanpa petak)'), komoditas: p ? p.komoditas : '',
+        luasM2: p ? angka(p.luasM2) : 0,
+        biaya: 0, pendapatan: 0, kg: 0, piutang: 0 };
+    }
+    return perPetak[k];
+  }
+
+  (S.data.biaya || []).forEach(function (b) {
+    if (!dalamRentangLokal(b.tanggal, dari, sampai)) return;
+    var n = angka(b.nominal);
+    total.biaya += n; total.catatanBiaya++;
+    barisPetak(b.petakId).biaya += n;
+    var kat = b.kategori || 'Lain-lain';
+    perKategori[kat] = (perKategori[kat] || 0) + n;
+  });
+
+  (S.data.panen || []).forEach(function (h) {
+    if (!dalamRentangLokal(h.tanggal, dari, sampai)) return;
+    var rpn = angka(h.totalPendapatan), kg = angka(h.jumlahKg),
+        dib = angka(h.sudahDibayar);
+    total.pendapatan += rpn; total.kg += kg; total.transaksiPanen++;
+    total.diterima += Math.min(dib, rpn);
+    total.piutangBaru += Math.max(0, rpn - dib);
+    var bp = barisPetak(h.petakId);
+    bp.pendapatan += rpn; bp.kg += kg; bp.piutang += Math.max(0, rpn - dib);
+    var kom = h.komoditas || '(tidak dicatat)';
+    if (!perKomoditas[kom]) {
+      perKomoditas[kom] = { nama: kom, kg: 0, pendapatan: 0, transaksi: 0 };
+    }
+    perKomoditas[kom].kg += kg;
+    perKomoditas[kom].pendapatan += rpn;
+    perKomoditas[kom].transaksi++;
+  });
+
+  var pupuk = { selesai: 0, tertunda: 0, terlewat: 0 };
+  (S.data.jadwal || []).forEach(function (j) {
+    if (!dalamRentangLokal(j.tanggal, dari, sampai)) return;
+    if (j.status === 'completed') pupuk.selesai++;
+    else if (j.status === 'postponed') pupuk.tertunda++;
+    else if (tglSaja(j.tanggal) < hariIni()) pupuk.terlewat++;
+  });
+
+  var hama = { laporan: 0, kerugian: 0, masihAktif: 0, tingkatBerat: 0 };
+  var daftarHama = [];
+  (S.data.kerusakan || []).forEach(function (k) {
+    if (!dalamRentangLokal(k.tanggal, dari, sampai)) return;
+    hama.laporan++;
+    hama.kerugian += angka(k.perkiraanRugiRp);
+    if (k.status === 'active') hama.masihAktif++;
+    if (k.tingkat === 'Berat' || k.tingkat === 'Kritis / Puso') hama.tingkatBerat++;
+    daftarHama.push({ tanggal: tglSaja(k.tanggal), petak: namaPetak(k.petakId),
+      gejala: k.judulGejala, tingkat: k.tingkat, status: k.status,
+      kerugian: angka(k.perkiraanRugiRp) });
+  });
+
+  var jumlahAktivitas = 0;
+  (S.data.aktivitas || []).forEach(function (a) {
+    if (!dalamRentangLokal(a.waktu, dari, sampai)) return;
+    jumlahAktivitas++;
+    total.jamKerja += angka(a.durasiMenit) / 60;
+    total.luasDikerjakanM2 += angka(a.luasM2);
+    var jn = a.jenis || 'Lain-lain';
+    perJenis[jn] = (perJenis[jn] || 0) + 1;
+  });
+
+  var stok = { masuk: 0, keluar: 0, nilaiMasuk: 0, nilaiKeluar: 0 };
+  (S.data.mutasi || []).forEach(function (m) {
+    if (!dalamRentangLokal(m.tanggal, dari, sampai)) return;
+    var it = itemById(m.itemId);
+    var nilai = Math.abs(angka(m.jumlah)) * (it ? angka(it.hargaSatuan) : 0);
+    if (angka(m.jumlah) >= 0) { stok.masuk++; stok.nilaiMasuk += nilai; }
+    else { stok.keluar++; stok.nilaiKeluar += nilai; }
+  });
+
+  total.laba = total.pendapatan - total.biaya;
+  total.marginPersen = total.pendapatan > 0
+    ? Math.round(total.laba / total.pendapatan * 1000) / 10 : 0;
+  total.bepPerKg = total.kg > 0 ? Math.round(total.biaya / total.kg) : 0;
+  total.hargaRerataPerKg = total.kg > 0
+    ? Math.round(total.pendapatan / total.kg) : 0;
+  total.jamKerja = Math.round(total.jamKerja * 10) / 10;
+
+  var petak = [];
+  for (var pk in perPetak) {
+    var r = perPetak[pk];
+    r.laba = r.pendapatan - r.biaya;
+    r.bepPerKg = r.kg > 0 ? Math.round(r.biaya / r.kg) : 0;
+    r.labaPerM2 = r.luasM2 > 0 ? Math.round(r.laba / r.luasM2) : 0;
+    petak.push(r);
+  }
+  petak.sort(function (a, b) { return b.laba - a.laba; });
+
+  var kategori = [];
+  for (var kt in perKategori) {
+    kategori.push({ nama: kt, nominal: perKategori[kt],
+      persen: total.biaya > 0
+        ? Math.round(perKategori[kt] / total.biaya * 1000) / 10 : 0 });
+  }
+  kategori.sort(function (a, b) { return b.nominal - a.nominal; });
+
+  var komoditas = [];
+  for (var km in perKomoditas) {
+    var kk = perKomoditas[km];
+    kk.hargaRerata = kk.kg > 0 ? Math.round(kk.pendapatan / kk.kg) : 0;
+    komoditas.push(kk);
+  }
+  komoditas.sort(function (a, b) { return b.pendapatan - a.pendapatan; });
+
+  var jenisAkt = [];
+  for (var ja in perJenis) jenisAkt.push({ nama: ja, jumlah: perJenis[ja] });
+  jenisAkt.sort(function (a, b) { return b.jumlah - a.jumlah; });
+
+  return {
+    dari: dari, sampai: sampai, total: total, petak: petak,
+    kategoriBiaya: kategori, komoditas: komoditas, pupuk: pupuk, hama: hama,
+    daftarHama: daftarHama.sort(function (a, b) {
+      return a.tanggal < b.tanggal ? 1 : -1;
+    }).slice(0, 20),
+    aktivitas: { jumlah: jumlahAktivitas, perJenis: jenisAkt },
+    stok: stok, pokok: null,
+    adaData: (total.catatanBiaya + total.transaksiPanen + jumlahAktivitas) > 0
+  };
+}
+
+function bandingkanLokal(kini, lalu) {
+  function selisih(a, b) {
+    var d = angka(a) - angka(b);
+    return { nilai: d,
+      persen: angka(b) !== 0 ? Math.round(d / Math.abs(angka(b)) * 1000) / 10 : null,
+      arah: d > 0 ? 'naik' : (d < 0 ? 'turun' : 'tetap') };
+  }
+  return {
+    pendapatan: selisih(kini.pendapatan, lalu.pendapatan),
+    biaya: selisih(kini.biaya, lalu.biaya),
+    laba: selisih(kini.laba, lalu.laba),
+    kg: selisih(kini.kg, lalu.kg),
+    bepPerKg: selisih(kini.bepPerKg, lalu.bepPerKg)
+  };
+}
+
+function laporanBulananLokal(tahun, bulan) {
+  var r = rentangBulanLokal(tahun, bulan);
+  var kini = hitungPeriodeLokal(r.dari, r.sampai);
+  var bl = bulan === 1 ? 12 : bulan - 1;
+  var tl = bulan === 1 ? tahun - 1 : tahun;
+  var rl = rentangBulanLokal(tl, bl);
+  var lalu = hitungPeriodeLokal(rl.dari, rl.sampai);
+
+  return {
+    jenis: 'bulanan', tahun: tahun, bulan: bulan,
+    namaBulan: BULAN_ID[bulan - 1],
+    judul: BULAN_ID[bulan - 1] + ' ' + tahun,
+    periode: r, kini: kini,
+    pembanding: { judul: BULAN_ID[bl - 1] + ' ' + tl, total: lalu.total,
+                  adaData: lalu.adaData },
+    perubahan: bandingkanLokal(kini.total, lalu.total),
+    catatan: catatanLokal(kini, lalu),
+    dibuatPada: new Date().toISOString().substring(0, 19),
+    dibuatOleh: S.pengguna ? S.pengguna.nama : ''
+  };
+}
+
+function laporanTahunanLokal(tahun) {
+  var r = { dari: tahun + '-01-01', sampai: tahun + '-12-31' };
+  var kini = hitungPeriodeLokal(r.dari, r.sampai);
+
+  var bulanan = [];
+  for (var b = 1; b <= 12; b++) {
+    var rb = rentangBulanLokal(tahun, b);
+    var hb = hitungPeriodeLokal(rb.dari, rb.sampai);
+    bulanan.push({ bulan: b, nama: BULAN_ID[b - 1],
+      singkat: BULAN_ID[b - 1].substring(0, 3),
+      pendapatan: hb.total.pendapatan, biaya: hb.total.biaya,
+      laba: hb.total.laba, kg: hb.total.kg,
+      transaksiPanen: hb.total.transaksiPanen, adaData: hb.adaData });
+  }
+
+  var lalu = hitungPeriodeLokal((tahun - 1) + '-01-01', (tahun - 1) + '-12-31');
+  var berisi = bulanan.filter(function (x) { return x.adaData; });
+  var puncakPanen = null, puncakLaba = null, terendahLaba = null;
+  if (berisi.length) {
+    puncakPanen = berisi.slice().sort(function (a, b) { return b.kg - a.kg; })[0];
+    var ul = berisi.slice().sort(function (a, b) { return b.laba - a.laba; });
+    puncakLaba = ul[0];
+    terendahLaba = ul[ul.length - 1];
+  }
+
+  var catatan = catatanLokal(kini, lalu);
+  if (berisi.length > 0 && berisi.length < 12) {
+    catatan.push({ jenis: 'info',
+      teks: 'Hanya ' + berisi.length + ' dari 12 bulan yang berisi catatan. Angka ' +
+            'tahunan menjumlahkan apa adanya, tidak memperkirakan bulan yang kosong.' });
+  }
+
+  return {
+    jenis: 'tahunan', tahun: tahun, judul: 'Tahun ' + tahun,
+    periode: r, kini: kini, bulanan: bulanan,
+    pembanding: { judul: 'Tahun ' + (tahun - 1), total: lalu.total,
+                  adaData: lalu.adaData },
+    perubahan: bandingkanLokal(kini.total, lalu.total),
+    puncakPanen: puncakPanen, puncakLaba: puncakLaba, terendahLaba: terendahLaba,
+    bulanBerisi: berisi.length, catatan: catatan,
+    dibuatPada: new Date().toISOString().substring(0, 19),
+    dibuatOleh: S.pengguna ? S.pengguna.nama : ''
+  };
+}
+
+function catatanLokal(kini, lalu) {
+  var out = [];
+  if (!kini.adaData) {
+    out.push({ jenis: 'kosong',
+      teks: 'Tidak ada catatan sama sekali pada periode ini. Angka nol di sini ' +
+            'berarti belum dicatat, bukan berarti tidak ada kegiatan.' });
+    return out;
+  }
+  if (kini.total.catatanBiaya === 0 && kini.total.transaksiPanen > 0) {
+    out.push({ jenis: 'peringatan',
+      teks: 'Ada panen tetapi tidak ada catatan biaya sama sekali. Angka laba dan ' +
+            'titik impas pada laporan ini terlalu bagus, karena biayanya belum masuk.' });
+  }
+  if (kini.total.transaksiPanen === 0 && kini.total.catatanBiaya > 0) {
+    out.push({ jenis: 'info',
+      teks: 'Belum ada panen pada periode ini, jadi seluruh biaya tampak sebagai ' +
+            'kerugian. Ini wajar pada masa tanam dan pemeliharaan.' });
+  }
+  if (kini.total.piutangBaru > 0) {
+    out.push({ jenis: 'peringatan',
+      teks: 'Piutang baru Rp ' + rp(kini.total.piutangBaru) + ' belum dibayar ' +
+            'pembeli. Angka laba di atas sudah menghitungnya sebagai pendapatan, ' +
+            'padahal uangnya belum diterima.' });
+  }
+  if (kini.pupuk.terlewat > 0) {
+    out.push({ jenis: 'peringatan',
+      teks: kini.pupuk.terlewat + ' jadwal pemupukan terlewat pada periode ini.' });
+  }
+  if (kini.hama.tingkatBerat > 0) {
+    out.push({ jenis: 'peringatan',
+      teks: kini.hama.tingkatBerat + ' laporan kerusakan tingkat berat atau kritis.' });
+  }
+  return out;
 }
 
 </script>
