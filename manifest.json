@@ -1,0 +1,27 @@
+{
+  "name": "TaniPintar — WebGIS & Manajemen Kebun Petani",
+  "short_name": "TaniPintar",
+  "description": "Pencatatan kebun, WebGIS petak, keuangan, pemupukan, dan analisis panen. Bekerja tanpa sinyal.",
+  "lang": "id",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#FDFBF7",
+  "theme_color": "#3A4D39",
+  "categories": ["productivity", "business", "utilities"],
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

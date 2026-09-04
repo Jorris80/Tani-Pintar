@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="TaniPintar">
+  <rect width="512" height="512" rx="112" fill="#3A4D39"/>
+  <!-- petak lahan: mengacu pada peta kebun, bukan sekadar daun -->
+  <g opacity=".28" stroke="#FDFBF7" stroke-width="7" fill="none">
+    <path d="M96 168h320M96 256h320M96 344h320M168 96v320M256 96v320M344 96v320"/>
+  </g>
+  <path d="M256 132c-58 34-92 84-92 138 0 46 34 84 80 90v40h24v-40c46-6 80-44 80-90 0-54-34-104-92-138z"
+        fill="#7FA96B"/>
+  <path d="M256 132v268" stroke="#3A4D39" stroke-width="12" stroke-linecap="round"/>
+  <path d="M256 232c-26-14-44-30-56-50M256 300c26-14 44-30 56-50"
+        stroke="#3A4D39" stroke-width="12" stroke-linecap="round" fill="none"/>
+  <circle cx="256" cy="256" r="150" fill="none" stroke="#C7924A" stroke-width="14"/>
+</svg>
