@@ -873,6 +873,26 @@ span.kotakIsian>button.kosongkan{
 }
 span.kotakIsian>button.kosongkan:hover{background:var(--bahaya);color:#fff}
 span.kotakIsian.terisi>button.kosongkan{display:flex}
+
+/* Pratinjau unggahan beberapa foto. Ukuran petak dibuat cukup besar
+   untuk dikenali isinya, tetapi tetap muat tiga kolom di layar ponsel
+   tersempit. */
+.petakFoto{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:4px}
+@media(min-width:640px){.petakFoto{grid-template-columns:repeat(5,1fr)}}
+@media(min-width:900px){.petakFoto{grid-template-columns:repeat(6,1fr)}}
+.petakFotoItem{position:relative;aspect-ratio:1;border-radius:9px;overflow:hidden;
+  border:1px solid var(--garis);background:var(--latar)}
+.petakFotoItem>img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
+.petakFotoItem>button.hapusFoto{position:absolute;top:3px;right:3px;width:24px;height:24px;
+  padding:0;border:0;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;
+  font-size:.95rem;line-height:1;cursor:pointer;display:flex;
+  align-items:center;justify-content:center}
+.petakFotoItem>button.hapusFoto:hover{background:var(--bahaya)}
+@media(pointer:coarse){
+  /* Sasaran sentuh diperbesar di perangkat sentuh — 24px terlalu kecil
+     untuk ibu jari, dan salah tekan di sini berarti foto terbuang. */
+  .petakFotoItem>button.hapusFoto{width:30px;height:30px;font-size:1.1rem}
+}
 /* Panah pengatur angka bawaan peramban disembunyikan: ia berhimpitan
    dengan tombol silang, dan di ponsel terlalu kecil untuk ditekan
    dengan tepat. Angka tetap bisa diketik seperti biasa. */
@@ -912,6 +932,14 @@ td.angka,th.angka{text-align:right;font-variant-numeric:tabular-nums;white-space
   border:1px solid var(--garis);background:var(--garis)}
 @media(min-width:900px){#peta,.peta{height:460px}}
 .leaflet-container{font-family:inherit;background:#DCE5D8}
+.leaflet-popup-content{margin:10px 12px;font-size:.78rem;line-height:1.5}
+.leaflet-popup-content-wrapper{border-radius:12px}
+@media(pointer:coarse){
+  /* Tombol tutup popup bawaan Leaflet terlalu kecil untuk ibu jari. */
+  .leaflet-popup-close-button{width:32px;height:32px;font-size:20px;
+    display:flex;align-items:center;justify-content:center}
+  .leaflet-control-zoom a{width:38px;height:38px;line-height:38px;font-size:1.2rem}
+}
 html[data-mode="gelap"] .leaflet-container{background:#1E2419}
 .petaLabel{
   background:rgba(255,255,255,.9);border:1px solid var(--utama2);border-radius:6px;
@@ -954,12 +982,181 @@ html[data-mode="gelap"] .chipPeta.on{background:#26301F}
 #toast.galat{background:var(--bahaya);color:#fff}
 #toast.sukses{background:var(--sukses);color:#fff}
 
+/* ---------- penampil foto (galeri) ----------
+   Dibuat penuh layar dan gelap: foto tanaman sering diperiksa di bawah
+   matahari, dan latar terang membuat rincian daun tidak terlihat. */
 #zoomFoto{
-  position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:6000;display:none;
-  align-items:center;justify-content:center;padding:16px;
+  /* Latar dibuat pekat penuh, bukan 94%. Sisa enam persen membuat isi
+     modal di belakangnya masih terbaca samar — terlihat seperti cacat
+     penggambaran, dan rincian daun jadi sulit dinilai. */
+  position:fixed;inset:0;background:#0B0F0A;z-index:6000;display:none;
+  flex-direction:column;touch-action:none;user-select:none;
 }
 #zoomFoto.tampil{display:flex}
-#zoomFoto img{max-width:100%;max-height:90vh;border-radius:10px}
+#zoomFoto .kepalaFoto{
+  display:flex;align-items:center;gap:10px;padding:12px 14px;
+  padding-top:calc(12px + env(safe-area-inset-top));color:#fff;flex:0 0 auto;
+}
+#zoomFoto .kepalaFoto .hitung{font-size:.82rem;font-weight:700;opacity:.85}
+#zoomFoto .kepalaFoto button{
+  background:rgba(255,255,255,.14);border:0;color:#fff;width:38px;height:38px;
+  border-radius:50%;font-size:1.1rem;cursor:pointer;line-height:1;
+  display:flex;align-items:center;justify-content:center;
+}
+#zoomFoto .kepalaFoto button:active{background:rgba(255,255,255,.3)}
+#zoomFoto .panggung{
+  flex:1;position:relative;overflow:hidden;display:flex;
+  align-items:center;justify-content:center;
+}
+#zoomFoto .panggung img{
+  max-width:100%;max-height:100%;object-fit:contain;
+  transform-origin:center center;transition:transform .12s ease-out;
+  -webkit-user-drag:none;
+}
+#zoomFoto .panggung img.geser{transition:none}
+#zoomFoto .navFoto{
+  position:absolute;top:50%;transform:translateY(-50%);
+  width:44px;height:44px;border-radius:50%;border:0;cursor:pointer;
+  background:rgba(255,255,255,.18);color:#fff;font-size:1.3rem;line-height:1;
+  display:flex;align-items:center;justify-content:center;
+  /* z-index WAJIB ada di sini. Foto diberi transform untuk perbesaran,
+     dan transform membuatnya membentuk konteks penumpukan sendiri.
+     Akibatnya foto menimpa tombol yang berada SEBELUMNYA di dalam DOM —
+     tombol "sebelumnya" jadi tidak bisa ditekan sama sekali, sementara
+     tombol "berikutnya" tetap bekerja karena letaknya sesudah foto. */
+  z-index:3;
+}
+#zoomFoto .navFoto:active{background:rgba(255,255,255,.34)}
+#zoomFoto .navFoto.kiri{left:10px}
+#zoomFoto .navFoto.kanan{right:10px}
+#zoomFoto .kakiFoto{
+  flex:0 0 auto;color:#fff;padding:10px 14px;
+  padding-bottom:calc(10px + env(safe-area-inset-bottom));
+  /* Tinggi dikunci supaya panggung foto TIDAK berubah tinggi saat
+     keterangan foto berikutnya lebih panjang atau lebih pendek.
+     Tanpa ini, tombol geser melompat di bawah jempol pengguna: tekan
+     "berikutnya" dua kali, tekanan kedua mendarat di tempat lain. */
+  min-height:66px;box-sizing:border-box;
+}
+#zoomFoto .kakiFoto .judulFoto{font-size:.92rem;font-weight:700;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#zoomFoto .kakiFoto .ketFoto{font-size:.78rem;opacity:.78;margin-top:2px;
+  height:2.6em;overflow:auto}
+#zoomFoto .jempolFoto{
+  display:flex;gap:6px;overflow-x:auto;padding:8px 14px 0;scrollbar-width:none;
+  /* Tinggi tetap karena alasan yang sama. */
+  height:68px;box-sizing:content-box;flex:0 0 auto;
+}
+#zoomFoto .jempolFoto::-webkit-scrollbar{display:none}
+#zoomFoto .jempolFoto img{
+  width:52px;height:52px;object-fit:cover;border-radius:7px;flex:0 0 auto;
+  opacity:.5;border:2px solid transparent;cursor:pointer;
+}
+#zoomFoto .jempolFoto img.aktif{opacity:1;border-color:#fff}
+#zoomFoto .petunjuk{
+  text-align:center;font-size:.72rem;color:rgba(255,255,255,.55);padding-bottom:4px;
+}
+
+/* ---------- galeri di dalam halaman ---------- */
+.galeri{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
+.galeri::-webkit-scrollbar{display:none}
+.galeri .bingkai{position:relative;flex:0 0 auto;width:104px}
+.galeri .bingkai img{
+  width:104px;height:104px;object-fit:cover;border-radius:10px;
+  border:1px solid var(--garis);cursor:pointer;display:block;
+}
+.galeri .bingkai small{
+  display:block;font-size:.64rem;color:var(--redup);margin-top:3px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+@media(min-width:700px){
+  .galeri .bingkai,.galeri .bingkai img{width:124px}
+  .galeri .bingkai img{height:124px}
+}
+
+/* ============================================================
+   TABLET & SASARAN SENTUH
+   ============================================================
+   Aplikasi ini dipakai dengan satu tangan, sering sambil berdiri di
+   kebun. Tombol yang terlalu kecil bukan sekadar kurang nyaman —
+   salah tekan berarti data yang salah tercatat.
+   ============================================================ */
+
+/* Sasaran sentuh minimal 44px hanya diberlakukan pada perangkat
+   sentuh. Pada tetikus, tombol sebesar itu justru terasa kikuk. */
+@media(pointer:coarse){
+  .tbl{min-height:44px}
+  .tbl.kecil{min-height:38px;padding:9px 12px}
+  #nav button{min-height:52px}
+  input,select,textarea{min-height:44px;font-size:16px}
+  /* 16px mencegah iOS memperbesar halaman sendiri saat kotak isian
+     disentuh — pembesaran itu menggeser tata letak dan membingungkan. */
+  .modal .kepala button{width:40px;height:40px}
+  table td,table th{padding:11px 8px}
+  .item{padding:12px 4px}
+}
+
+/* Tablet: ruang layar dipakai untuk menampilkan lebih banyak sekaligus,
+   bukan sekadar meregangkan tata letak ponsel. */
+@media(min-width:640px) and (max-width:899px){
+  #isi{padding:18px}
+  .kisi3{grid-template-columns:repeat(3,1fr)}
+  .kisi4{grid-template-columns:repeat(4,1fr)}
+  #peta,.peta{height:420px}
+  #nav button{min-width:84px;font-size:.7rem}
+  .modal{max-width:640px}
+}
+
+/* Tablet mendatar dan layar lebar */
+@media(min-width:900px){
+  .kartu{padding:16px}
+  .modal{max-width:720px}
+}
+
+/* Tablet besar: dasbor dan laporan muat dua kolom berdampingan */
+@media(min-width:1100px){
+  .duaKolom{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+  .duaKolom>.kartu{margin-bottom:0}
+}
+
+/* Layar sangat sempit — ponsel lama masih banyak dipakai di desa */
+@media(max-width:360px){
+  #isi{padding:10px}
+  .kartu{padding:11px}
+  .kisi{gap:8px}
+  .kisi4{grid-template-columns:repeat(2,1fr)}
+  .statistik .angka{font-size:1.25rem}
+  #nav button{min-width:64px;font-size:.62rem}
+}
+
+/* Layar mendatar dan pendek: bilah navigasi memakan terlalu banyak
+   tinggi bila ikonnya tetap bertumpuk di atas tulisan. */
+@media(max-height:460px) and (orientation:landscape){
+  #nav button{flex-direction:row;gap:6px;min-height:40px;padding:6px 10px}
+  #nav button .ik{font-size:1rem}
+  #peta,.peta{height:240px}
+  .modal{max-height:96vh}
+}
+
+/* ---------- galeri di dalam popup peta ---------- */
+.popFoto{margin-top:7px}
+.popFoto .bingkaiPop{
+  position:relative;width:100%;height:118px;border-radius:8px;overflow:hidden;
+  background:#DCE5D8;
+}
+.popFoto .bingkaiPop img{width:100%;height:100%;object-fit:cover;cursor:pointer;display:block}
+.popFoto .navPop{
+  position:absolute;top:50%;transform:translateY(-50%);width:28px;height:28px;
+  border-radius:50%;border:0;background:rgba(0,0,0,.45);color:#fff;
+  font-size:.9rem;line-height:1;cursor:pointer;display:flex;
+  align-items:center;justify-content:center;padding:0;
+}
+.popFoto .navPop.kiri{left:5px}
+.popFoto .navPop.kanan{right:5px}
+.popFoto .hitungPop{
+  position:absolute;right:6px;bottom:6px;background:rgba(0,0,0,.55);color:#fff;
+  border-radius:999px;padding:1px 8px;font-size:.66rem;font-weight:700;
+}
 
 /* ---------- spanduk status ---------- */
 .spanduk{
@@ -1044,7 +1241,27 @@ html[data-mode="gelap"] .spanduk.hijau{background:#22301F;border-color:#3E5B3A;c
   </main>
 </div>
 <div id="toast"></div>
-<div id="zoomFoto" onclick="this.classList.remove('tampil')"><img id="zoomFotoImg" alt=""></div>
+<div id="zoomFoto">
+  <div class="kepalaFoto">
+    <button type="button" onclick="tutupGaleri()" aria-label="Tutup">&times;</button>
+    <span class="hitung" id="galeriHitung"></span>
+    <button type="button" class="kanan" onclick="zoomGaleri(-0.4)" aria-label="Perkecil">&minus;</button>
+    <button type="button" onclick="zoomGaleri(0.4)" aria-label="Perbesar">+</button>
+  </div>
+  <div class="panggung" id="galeriPanggung">
+    <button type="button" class="navFoto kiri" id="galeriKiri"
+            onclick="geserGaleri(-1)" aria-label="Foto sebelumnya">&#8249;</button>
+    <img id="zoomFotoImg" alt="">
+    <button type="button" class="navFoto kanan" id="galeriKanan"
+            onclick="geserGaleri(1)" aria-label="Foto berikutnya">&#8250;</button>
+  </div>
+  <div class="jempolFoto" id="galeriJempol"></div>
+  <div class="kakiFoto">
+    <div class="judulFoto" id="galeriJudul"></div>
+    <div class="ketFoto" id="galeriKet"></div>
+    <div class="petunjuk">Geser untuk berpindah foto · cubit atau ketuk dua kali untuk memperbesar</div>
+  </div>
+</div>
 <script>
 /* @preserve
  * Leaflet 1.9.4, a JS library for interactive maps. https://leafletjs.com
@@ -1068,8 +1285,8 @@ if ('serviceWorker' in navigator) {
 <script>
 
 /* Versi antarmuka. HARUS naik bersama APP_VERSI di Code.gs. */
-var VERSI_KLIEN = '1.6.0';
-var TANGGAL_RILIS_KLIEN = '2026-09-04';
+var VERSI_KLIEN = '1.7.0';
+var TANGGAL_RILIS_KLIEN = '2026-09-06';
 
 /* ============================================================
    TaniPintar — inti aplikasi
@@ -1224,11 +1441,8 @@ function toast(pesan, jenis) {
                            jenis === 'galat' ? 6000 : 3200);
 }
 
-function zoomFoto(url) {
-  if (!url) return;
-  $('zoomFotoImg').src = url;
-  $('zoomFoto').classList.add('tampil');
-}
+/* zoomFoto() kini disediakan oleh parts/15-galeri.js sebagai pembungkus
+   penampil galeri, supaya seluruh pemanggilan lama tetap berfungsi. */
 
 /* ============================================================
    TRANSPOR — dua mode
@@ -1239,7 +1453,7 @@ function modeGas() {
 }
 
 function urlGas() {
-  return (window.TANIPINTAR_CONFIG && window.TANIPINTAR_CONFIG.gasUrl) || '';
+  return (window.TANIPINTAR_CONFIG && window.TANIPINTAR_CONFIG.gasUrl) || 'https://script.google.com/macros/s/AKfycbwSbDs7R-Z2FS38FMsDCD96Q9fgwFUBXXu1UePNF7BGPqopL5VBDpcklPviXMxjVvdp/exec';
 }
 
 /**
@@ -1818,6 +2032,20 @@ function bentukRuas(daftar, nilaiAwal) {
         'oninput="samakanWarnaRuas(\'' + f.k + '\')">' +
         '<button type="button" class="tbl sekunder kecil" ' +
         'onclick="setWarnaRuas(\'' + f.k + '\', \'\')">Kosongkan</button></span>';
+    } else if (f.t === 'fotoBanyak') {
+      /* Beberapa foto sekaligus. Menyimpannya sebagai larik di satu ruas
+         tersembunyi; pemisahannya menjadi baris-baris terpisah dikerjakan
+         saat penyimpanan, karena satu sel Spreadsheet hanya memuat satu foto. */
+      html += '<div class="baris" style="margin-bottom:6px">' +
+        '<button type="button" class="tbl sekunder kecil" onclick="ambilFotoBanyak(\'' +
+        f.k + '\',true)">📷 Kamera</button>' +
+        '<button type="button" class="tbl sekunder kecil" onclick="ambilFotoBanyak(\'' +
+        f.k + '\',false)">🖼️ Pilih beberapa foto</button>' +
+        '<button type="button" class="tbl sekunder kecil" onclick="kosongkanFotoBanyak(\'' +
+        f.k + '\')">Kosongkan</button></div>' +
+        '<input type="hidden" id="' + id + '" value="">' +
+        '<div id="pratinjau_' + f.k + '" class="petakFoto"></div>' +
+        '<div id="hitung_' + f.k + '" class="bantu"></div>';
     } else if (f.t === 'foto') {
       html += '<div class="baris" style="margin-bottom:6px">' +
         '<button type="button" class="tbl sekunder kecil" onclick="ambilFoto(\'' + f.k +
@@ -2027,6 +2255,119 @@ function ambilFoto(kunci, pakaiKamera) {
   input.click();
 }
 
+/* Foto yang sedang disiapkan, per ruas. Disimpan di luar DOM karena
+   isinya besar; menaruh belasan gambar base64 di atribut value membuat
+   halaman berat dan lamban digulir. */
+var _fotoBanyak = {};
+
+/**
+ * Memilih beberapa foto sekaligus.
+ *
+ * Setiap berkas diperkecil satu per satu, bukan serentak: memproses
+ * sepuluh gambar sekaligus membuat ponsel kelas menengah membeku
+ * beberapa detik tanpa satu pun tanda bahwa aplikasinya masih hidup.
+ */
+function ambilFotoBanyak(kunci, pakaiKamera) {
+  var input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  if (pakaiKamera) input.setAttribute('capture', 'environment');
+  else input.setAttribute('multiple', 'multiple');
+
+  input.onchange = function () {
+    var berkas = [];
+    for (var i = 0; i < (input.files ? input.files.length : 0); i++) {
+      berkas.push(input.files[i]);
+    }
+    if (!berkas.length) return;
+
+    if (!_fotoBanyak[kunci]) _fotoBanyak[kunci] = [];
+    var maksSekali = 20;
+    if (berkas.length > maksSekali) {
+      toast('Maksimal ' + maksSekali + ' foto sekali pilih. ' +
+            'Sisanya dapat ditambahkan setelah ini.', 'galat');
+      berkas = berkas.slice(0, maksSekali);
+    }
+
+    var selesai = 0;
+    tandaiProsesFoto(kunci, 0, berkas.length);
+
+    function berikutnya() {
+      if (selesai >= berkas.length) {
+        tandaiProsesFoto(kunci, 0, 0);
+        gambarPratinjauBanyak(kunci);
+        toast(berkas.length + ' foto siap disimpan.', 'sukses');
+        return;
+      }
+      var b = berkas[selesai];
+      kecilkanGambar(b, 1280, function (dataUrl) {
+        _fotoBanyak[kunci].push({ dataUrl: dataUrl, nama: b.name || '' });
+        selesai++;
+        tandaiProsesFoto(kunci, selesai, berkas.length);
+        /* Jeda satu putaran supaya layar sempat menggambar kemajuannya. */
+        setTimeout(berikutnya, 0);
+      });
+    }
+    berikutnya();
+  };
+  input.click();
+}
+
+function tandaiProsesFoto(kunci, selesai, total) {
+  var el = $('hitung_' + kunci);
+  if (!el) return;
+  if (total > 0) {
+    el.innerHTML = '<span class="muat"></span> Memperkecil foto ' + selesai +
+      ' dari ' + total + '…';
+  } else {
+    var n = (_fotoBanyak[kunci] || []).length;
+    el.textContent = n ? n + ' foto siap disimpan. Tekan sebuah foto untuk ' +
+      'memperbesarnya.' : '';
+  }
+}
+
+function gambarPratinjauBanyak(kunci) {
+  var wadah = $('pratinjau_' + kunci);
+  if (!wadah) return;
+  var daftar = _fotoBanyak[kunci] || [];
+  var html = '';
+  for (var i = 0; i < daftar.length; i++) {
+    html += '<div class="petakFotoItem">' +
+      '<img src="' + esc(daftar[i].dataUrl) + '" alt="" ' +
+      'onclick="bukaGaleri(kumpulanFotoBanyak(\'' + jsq(kunci) + '\'),' + i + ')">' +
+      '<button type="button" class="hapusFoto" aria-label="Buang foto ini" ' +
+      'onclick="buangFotoBanyak(\'' + jsq(kunci) + '\',' + i + ')">&times;</button>' +
+      '</div>';
+  }
+  wadah.innerHTML = html;
+  tandaiProsesFoto(kunci, 0, 0);
+}
+
+/** Bentuk yang dipahami galeri: larik objek berruas fotoUrl. */
+function kumpulanFotoBanyak(kunci) {
+  return (_fotoBanyak[kunci] || []).map(function (f, i) {
+    return { fotoUrl: f.dataUrl, judul: 'Foto ' + (i + 1), catatan: f.nama };
+  });
+}
+
+function buangFotoBanyak(kunci, indeks) {
+  if (!_fotoBanyak[kunci]) return;
+  _fotoBanyak[kunci].splice(indeks, 1);
+  gambarPratinjauBanyak(kunci);
+}
+
+function kosongkanFotoBanyak(kunci) {
+  _fotoBanyak[kunci] = [];
+  gambarPratinjauBanyak(kunci);
+}
+
+/** Dipanggil formulir saat menyimpan. */
+function fotoBanyakTerkumpul(kunci) {
+  return (_fotoBanyak[kunci] || []).map(function (f) { return f.dataUrl; });
+}
+
+function lupakanFotoBanyak(kunci) { delete _fotoBanyak[kunci]; }
+
 function hapusFoto(kunci) {
   var el = $('f_' + kunci);
   if (el) el.value = '';
@@ -2181,6 +2522,15 @@ function pasangTombolKembali() {
       return;
     }
 
+    /* Penampil foto ditutup lebih dulu daripada modal: ia digambar di
+       atas segalanya, dan menutup modal di baliknya akan terasa seperti
+       satu tekan Kembali melompati dua langkah. */
+    if (typeof galeriTerbuka === 'function' && galeriTerbuka()) {
+      _galeriDiRiwayat = false;
+      tutupGaleriDom();
+      return;
+    }
+
     if ($('tirai')) {
       _modalDiRiwayat = false;
       tutupModalDom();
@@ -2319,8 +2669,14 @@ function spandukStatus() {
     html += '<div class="spanduk merah takCetak"><span>⚠️</span><span>' +
       '<b>Versi antarmuka dan peladen berbeda — v' + esc(VERSI_KLIEN) +
       ' vs v' + esc(S.versiPeladen) + '</b>' +
-      'Sebagian fitur dapat berhenti bekerja tanpa pesan galat. Salin ulang seluruh ' +
-      'berkas dari paket yang sama, lalu terapkan ulang Web App.' +
+      'Sebagian fitur dapat berhenti bekerja tanpa pesan galat. ' +
+      /* Penyebab tersering disebut langsung di spanduk, karena banyak
+         pengguna memperbaiki tanpa pernah membuka halaman Tentang. */
+      (bandingVersi(S.versiPeladen, VERSI_KLIEN) < 0
+        ? 'Yang paling sering: penerapan Web App belum diperbarui setelah kode ' +
+          'ditempel — Deploy ▸ Manage deployments ▸ Version: New version.'
+        : 'Berkas tampilan masih versi lama; tempel ulang Index.html dari paket ' +
+          'yang sama.') +
       '<button class="tbl kecil bahaya" style="margin-top:6px" ' +
       'onclick="pindah(\'tentang\')">Lihat rinciannya</button></span></div>';
   }
@@ -2816,7 +3172,16 @@ function gambarPetakDiPeta() {
     var titik = p.koordinat || [];
     if (titik.length < 3) continue;
     var poligon = L.polygon(titik, gayaPetak(p));
-    poligon.bindPopup(popupPetak(p));
+    poligon.bindPopup(popupPetak(p), { maxWidth: 260, minWidth: 210 });
+    /* Foto diisi saat popup DIBUKA, bukan saat didaftarkan.
+       Leaflet baru menaruh isi popup ke dalam DOM ketika popup terbuka;
+       mengisinya lebih awal berarti wadahnya belum ada, dan tulisan
+       "Memuat foto…" akan tertinggal di sana selamanya. */
+    poligon.on('popupopen', (function (petak) {
+      return function () {
+        isiPopupGaleri('petak-' + petak.id, ambilFotoPetak(petak.id));
+      };
+    })(p));
     poligon.addTo(_lapisanPetak);
     for (var j = 0; j < titik.length; j++) semuaTitik.push(titik[j]);
 
@@ -2890,6 +3255,18 @@ function popupPetak(p) {
     html += '<br><a href="https://wa.me/' + wa + '" target="_blank" rel="noopener">' +
             '💬 WhatsApp petani</a>';
   }
+
+  /* Galeri di dalam popup. Wadahnya digambar kosong lebih dulu, lalu
+     diisi setelah fotonya selesai diambil — popup tidak boleh menunggu
+     unduhan sebelum muncul, terutama di jaringan lambat. */
+  var adaFoto = false;
+  (S.data.fotoTumbuh || []).forEach(function (f) {
+    if (String(f.petakId) === String(p.id) && f.adaFoto !== false) adaFoto = true;
+  });
+  if (adaFoto) html += popupGaleriHtml('petak-' + p.id);
+
+  html += '<br><button class="tbl kecil" style="margin-top:6px" ' +
+    'onclick="detailPetak(\'' + jsq(p.id) + '\')">Buka detail</button>';
   return html;
 }
 
@@ -3319,10 +3696,15 @@ function detailPetak(id) {
     }
   });
 
-  var foto = (S.data.fotoTumbuh || []).filter(function (f) {
-    return String(f.petakId) === String(id);
+  /* Jumlah foto diketahui dari bootstrap (penanda adaFoto), tetapi isinya
+     diambil terpisah — lihat catatan pada tanpaFoto() di Code.gs. */
+  var jumlahFoto = 0;
+  (S.data.fotoTumbuh || []).forEach(function (f) {
+    if (String(f.petakId) === String(id) && f.adaFoto !== false) jumlahFoto++;
   });
 
+  /* Ringkasan keterangan petak. Blok inilah yang membuka modal, jadi
+     variabel html dimulai di sini. */
   var html = '<div class="kisi kisi2">' +
     barisInfo('Petani', p.namaPetani) + barisInfo('Nomor HP', p.noHp) +
     barisInfo('Lokasi', p.lokasi) + barisInfo('Kelompok', p.kelompok) +
@@ -3334,32 +3716,38 @@ function detailPetak(id) {
     barisInfo('Umur tanaman', umur !== null ? umur + ' hari' : '-') +
     barisInfo('Perkiraan panen', tglIndo(p.perkiraanPanen, true)) +
     barisInfo('Fase', p.fase) +
-    barisInfo('pH tanah', p.ph) + barisInfo('Kelembapan', p.kelembapan ? p.kelembapan + '%' : '-') +
+    barisInfo('pH tanah', p.ph) +
+    barisInfo('Kelembapan', p.kelembapan ? p.kelembapan + '%' : '-') +
     barisInfo('Bahan organik', p.bahanOrganik) +
-    barisInfo('NDVI', p.ndvi) +
+    barisInfo('Status lahan', p.statusLahan) +
     '</div>';
 
   html += '<hr class="pisah"><div class="kisi kisi3">' +
     kartuStat('💸', 'Rp ' + rpSingkat(biaya), 'Total Biaya', '') +
     kartuStat('🌾', rp(kg) + ' kg', 'Total Panen', 'Rp ' + rpSingkat(pendapatan)) +
-    kartuStat(pendapatan - biaya >= 0 ? '📈' : '📉', 'Rp ' + rpSingkat(pendapatan - biaya),
-              'Laba', angka(p.luasM2) > 0
-                ? 'Rp ' + rp(Math.round((pendapatan - biaya) / angka(p.luasM2))) + '/m²' : '') +
+    kartuStat(pendapatan - biaya >= 0 ? '📈' : '📉',
+              'Rp ' + rpSingkat(pendapatan - biaya), 'Laba',
+              angka(p.luasM2) > 0
+                ? 'Rp ' + rp(Math.round((pendapatan - biaya) / angka(p.luasM2))) + '/m²'
+                : '') +
     '</div>';
 
-  if (p.catatan) html += '<hr class="pisah"><p><b>Catatan:</b><br>' + esc(p.catatan) + '</p>';
-
-  if (foto.length) {
-    html += '<hr class="pisah"><h4>Galeri pertumbuhan (' + foto.length + ')</h4>' +
-      '<div class="kisi kisi3">';
-    foto.sort(function (a, b) { return String(b.tanggal) < String(a.tanggal) ? -1 : 1; });
-    for (var i = 0; i < Math.min(foto.length, 6); i++) {
-      html += '<div><img class="foto" src="' + esc(foto[i].fotoUrl) +
-        '" onclick="zoomFoto(this.src)"><small style="color:var(--redup)">' +
-        tglIndo(foto[i].tanggal) + ' · ' + angka(foto[i].hst) + ' HST</small></div>';
-    }
-    html += '</div>';
+  if (p.catatan) {
+    html += '<hr class="pisah"><p><b>Catatan:</b><br>' + esc(p.catatan) + '</p>';
   }
+
+  html += '<hr class="pisah"><div class="baris" style="margin-bottom:6px">' +
+    '<h4 style="margin:0">📷 Perkembangan kebun' +
+    (jumlahFoto ? ' (' + jumlahFoto + ' foto)' : '') + '</h4>' +
+    (bolehUbah() ? '<button class="tbl sekunder kecil kanan" ' +
+      'onclick="formFotoTumbuh(\'' + jsq(id) + '\')">+ Foto</button>' : '') +
+    '</div><div id="galeriPetak">' +
+    (jumlahFoto
+      ? '<div class="kosong" style="padding:14px"><span class="muat"></span>' +
+        'Memuat ' + jumlahFoto + ' foto…</div>'
+      : '<div class="kosong" style="padding:14px"><span class="ik">📷</span>' +
+        'Belum ada foto. Ambil dari sudut yang sama setiap kali agar perbandingan ' +
+        'antarwaktu jelas terlihat.</div>') + '</div>';
 
   html += '<hr class="pisah"><div class="tumpuk">';
   html += '<button class="tbl lebar" onclick="bukaPokok(\'' + jsq(id) +
@@ -3382,6 +3770,11 @@ function detailPetak(id) {
   html += '</div>';
 
   modalBuka(p.nama, html);
+
+  if (jumlahFoto) {
+    isiGaleriKeWadah('galeriPetak', 'petak-' + id, ambilFotoPetak(id),
+      'Foto tidak dapat dimuat. Periksa sambungan internet.');
+  }
 }
 
 function barisInfo(label, nilai) {
@@ -6654,9 +7047,16 @@ function formFotoTumbuh(petakId) {
   var hst = (p && p.tanggalTanam) ? selisihHari(p.tanggalTanam, hariIni()) : 0;
 
   var ruas = [
+    { k: 'x_info', t: 'info', warna: 'biru',
+      isi: '<span>📷</span><span><b>Beberapa foto sekaligus</b>Pilih sebanyak yang ' +
+        'diperlukan dalam satu kali unggah — misalnya empat sudut kebun pada hari ' +
+        'yang sama. Seluruhnya disimpan dengan tanggal dan keterangan yang sama, ' +
+        'lalu tampil sebagai galeri yang bisa digeser di peta dan di detail petak.' +
+        '</span>' },
     { k: 'tanggal', n: 'Tanggal', t: 'tanggal', wajib: true, bawaan: hariIni() },
-    { k: 'fotoUrl', n: 'Foto tanaman', t: 'foto',
-      help: 'Ambil dari sudut yang sama setiap kali agar perbandingan antar waktu jelas.' },
+    { k: 'fotoUrl', n: 'Foto tanaman', t: 'fotoBanyak',
+      help: 'Ambil dari sudut yang sama setiap kali agar perbandingan antar waktu ' +
+        'terlihat jelas.' },
     { k: 'hst', n: 'Hari setelah tanam', t: 'angka', bawaan: hst === null ? 0 : hst },
     { k: 'fase', n: 'Fase', t: 'pilih',
       opsi: ['persiapan', 'vegetatif', 'pembungaan', 'pembuahan', 'siap_panen'],
@@ -6664,18 +7064,36 @@ function formFotoTumbuh(petakId) {
     { k: 'tinggiCm', n: 'Tinggi tanaman (cm)', t: 'angka' },
     { k: 'statusSehat', n: 'Kondisi', t: 'pilih',
       opsi: ['Sehat', 'Perlu Perhatian', 'Bermasalah'] },
-    { k: 'judul', n: 'Judul', t: 'teks' },
+    { k: 'judul', n: 'Judul', t: 'teks', contoh: 'Blok utara, minggu ke-6' },
     { k: 'catatan', n: 'Catatan', t: 'area', baris: 2 }
   ];
 
-  modalBuka('Foto pertumbuhan — ' + (p ? p.nama : ''), bentukRuas(ruas, {}), function () {
-    var v = kumpulkanRuas();
-    if (!v.fotoUrl) { toast('Ambil foto terlebih dahulu.', 'galat'); return false; }
-    v.petakId = petakId;
-    ubah('foto_simpan', { item: v }, { pesan: 'Foto tersimpan.' })
-      .catch(function (e) { toast(e.message, 'galat'); });
-    return true;
-  });
+  kosongkanFotoBanyak('fotoUrl');
+
+  modalBuka('Foto pertumbuhan — ' + (p ? p.nama : ''), bentukRuas(ruas, {}),
+    function () {
+      var daftar = fotoBanyakTerkumpul('fotoUrl');
+      if (!daftar.length) { toast('Pilih foto terlebih dahulu.', 'galat'); return false; }
+      if (!S.daring) {
+        toast('Mengunggah foto memerlukan sambungan internet.', 'galat');
+        return false;
+      }
+      var v = kumpulkanRuas();
+      panggil('foto_simpan_banyak', {
+        petakId: petakId, foto: daftar, tanggal: v.tanggal, hst: v.hst,
+        fase: v.fase, tinggiCm: v.tinggiCm, statusSehat: v.statusSehat,
+        judul: v.judul, catatan: v.catatan
+      }).then(function (r) {
+        toast(r.tersimpan + ' foto tersimpan' +
+              (r.dilewati ? ', ' + r.dilewati + ' dilewati karena terlalu besar' : '') +
+              '.', 'sukses');
+        lupakanFotoBanyak('fotoUrl');
+        lupakanCacheFoto(petakId, null);
+        S.petaAktif = null;
+        muatData(true).then(render);
+      }).catch(function (e) { toast(e.message, 'galat'); });
+      return true;
+    }, 'Unggah');
 }
 
 /* ---------------------------------------------------------
@@ -7051,6 +7469,12 @@ function mulai() {
   gantiRiwayat();
 
   document.addEventListener('keydown', function (e) {
+    if (galeriTerbuka()) {
+      if (e.key === 'Escape') { tutupGaleri(); return; }
+      if (e.key === 'ArrowLeft') { geserGaleri(-1); return; }
+      if (e.key === 'ArrowRight') { geserGaleri(1); return; }
+      return;
+    }
     if (e.key === 'Escape') modalTutup();
   });
   pasangEnterMenyeluruh();
@@ -7619,7 +8043,15 @@ function gambarPetaPokok() {
     var m = L.circleMarker([lat, lng], {
       radius: 6, color: '#fff', weight: 1.5, fillColor: warna, fillOpacity: 0.95
     }).addTo(_petaPokok);
-    m.bindPopup(popupPokok(p));
+    m.bindPopup(popupPokok(p), { maxWidth: 250, minWidth: 190 });
+    /* Sama seperti pada petak: isi popup baru masuk DOM saat dibuka. */
+    m.on('popupopen', (function (pokok) {
+      return function () {
+        if (angka(pokok.jumlahFoto) > 0) {
+          isiPopupGaleri('pokok-' + pokok.id, ambilFotoPokok(pokok.id));
+        }
+      };
+    })(p));
   }
 
   if (batas.length) {
@@ -7632,13 +8064,16 @@ function gambarPetaPokok() {
 }
 
 function popupPokok(p) {
-  return '<div style="min-width:150px"><b>' + esc(p.kode) + '</b><br>' +
+  var html = '<div style="min-width:170px"><b>' + esc(p.kode) + '</b><br>' +
     '<small>Baris ' + esc(p.baris) + ' · pokok ke-' + esc(p.kolom) + '</small><br>' +
     '<small>' + esc(POKOK_LABEL[p.status] || p.status) + '</small><br>' +
     (angka(p.produksi12BulanKg)
-      ? '<small>' + rp(p.produksi12BulanKg) + ' kg dalam 12 bulan</small><br>' : '') +
-    '<button class="tbl kecil" style="margin-top:6px" onclick="detailPokok(\'' +
-    jsq(p.id) + '\')">Buka riwayat</button></div>';
+      ? '<small>' + rp(p.produksi12BulanKg) + ' kg dalam 12 bulan</small><br>' : '');
+
+  if (angka(p.jumlahFoto) > 0) html += popupGaleriHtml('pokok-' + p.id);
+
+  return html + '<button class="tbl kecil" style="margin-top:6px" ' +
+    'onclick="detailPokok(\'' + jsq(p.id) + '\')">Buka riwayat</button></div>';
 }
 
 /* ------------------------------------------------------------
@@ -7687,6 +8122,19 @@ function detailPokok(id) {
     html += '<hr class="pisah"><p><b>Catatan:</b><br>' + esc(p.catatan) + '</p>';
   }
 
+  html += '<hr class="pisah"><div class="baris" style="margin-bottom:6px">' +
+    '<h4 style="margin:0">📷 Foto pohon' +
+    (angka(p.jumlahFoto) ? ' (' + angka(p.jumlahFoto) + ')' : '') + '</h4>' +
+    (bolehUbah() ? '<button class="tbl sekunder kecil kanan" ' +
+      'onclick="formFotoPokok(\'' + jsq(id) + '\')">+ Foto</button>' : '') +
+    '</div><div id="galeriPokok">' +
+    (angka(p.jumlahFoto)
+      ? '<div class="kosong" style="padding:14px"><span class="muat"></span>' +
+        'Memuat foto…</div>'
+      : '<div class="kosong" style="padding:14px"><span class="ik">📷</span>' +
+        'Belum ada foto pohon ini. Foto dari sudut yang sama tiap musim membuat ' +
+        'perkembangan tajuk dan buahnya terlihat jelas.</div>') + '</div>';
+
   html += '<hr class="pisah"><h4>Riwayat (' + riwayat.length + ')</h4>';
   if (!riwayat.length) {
     html += '<div class="kosong"><span class="ik">📋</span>Belum ada riwayat.</div>';
@@ -7699,7 +8147,9 @@ function detailPokok(id) {
         (c.operator ? ' · ' + esc(c.operator) : '') + '</small>' +
         (c.keterangan ? '<small>' + esc(c.keterangan) + '</small>' : '') + '</div>' +
         '<div class="nilai">' +
-        (angka(c.jumlahKg) ? '<b>' + c.jumlahKg + ' kg</b>' : '') + '</div></div>';
+        (angka(c.jumlahKg) ? '<b>' + c.jumlahKg + ' kg</b>' : '') +
+        (c.adaFoto ? '<br><small style="color:var(--redup)">📷</small>' : '') +
+        '</div></div>';
     }
   }
 
@@ -7720,6 +8170,60 @@ function detailPokok(id) {
   }
 
   modalBuka('🌳 ' + p.kode, html);
+
+  if (angka(p.jumlahFoto)) {
+    isiGaleriKeWadah('galeriPokok', 'pokok-' + id, ambilFotoPokok(id),
+      'Foto tidak dapat dimuat. Periksa sambungan internet.');
+  }
+}
+
+/**
+ * Formulir khusus foto pohon. Dipisahkan dari formCatatPokok supaya
+ * menambah foto hanya perlu dua ketukan — memotret pohon adalah hal
+ * yang dilakukan sambil berjalan, bukan sambil duduk mengisi borang.
+ */
+function formFotoPokok(id) {
+  var p = pokokById(id);
+  if (!p) return;
+
+  var ruas = [
+    { k: 'x_info', t: 'info', warna: 'biru',
+      isi: '<span>📷</span><span><b>Beberapa foto sekaligus</b>Misalnya tajuk, ' +
+        'pangkal batang, dan buah pada hari yang sama. Seluruhnya menjadi bagian ' +
+        'dari riwayat pohon ini dan tampil sebagai galeri yang bisa digeser di peta ' +
+        'pokok.</span>' },
+    { k: 'fotoUrl', n: 'Foto pohon', t: 'fotoBanyak',
+      help: 'Berdirilah di tempat yang sama setiap kali memotret. Perbandingan ' +
+            'antarwaktu hanya berarti bila sudut pandangnya tetap.' },
+    { k: 'tanggal', n: 'Tanggal', t: 'tanggal', bawaan: hariIni(), wajib: true },
+    { k: 'keterangan', n: 'Keterangan', t: 'area', baris: 2,
+      contoh: 'Tajuk mulai rimbun, buah pentil sudah tampak' }
+  ];
+
+  kosongkanFotoBanyak('fotoUrl');
+
+  modalBuka('Tambah foto — ' + p.kode, bentukRuas(ruas, {}), function () {
+    if (!S.daring) {
+      toast('Menambah foto memerlukan sambungan internet.', 'galat');
+      return false;
+    }
+    var daftar = fotoBanyakTerkumpul('fotoUrl');
+    if (!daftar.length) { toast('Pilih foto terlebih dahulu.', 'galat'); return false; }
+    var v = kumpulkanRuas();
+    panggil('pokok_foto_banyak', {
+      pokokId: id, foto: daftar, tanggal: v.tanggal, keterangan: v.keterangan
+    }).then(function (r) {
+      toast(r.tersimpan + ' foto tersimpan' +
+            (r.dilewati ? ', ' + r.dilewati + ' dilewati karena terlalu besar' : '') +
+            '.', 'sukses');
+      lupakanFotoBanyak('fotoUrl');
+      lupakanCacheFoto(null, id);
+      _perluRenderPetaPokok = true;
+      modalTutup();
+      return muatPokok(_pokok.petakId, true);
+    }).catch(function (e) { toast(e.message, 'galat'); });
+    return true;
+  }, 'Unggah');
 }
 
 function ikonCatatanPokok(jenis) {
@@ -8275,10 +8779,8 @@ function bagianVersi() {
     html += '<div class="spanduk merah"><span>⚠️</span><span>' +
       '<b>Versi antarmuka dan peladen berbeda</b>' +
       'Antarmuka v' + esc(VERSI_KLIEN) + ', peladen v' + esc(vPeladen) + '. ' +
-      'Ini terjadi bila <code>Code.gs</code> diperbarui tetapi <code>Index.html</code> ' +
-      'belum ditempel ulang, atau sebaliknya. Sebagian fitur bisa berhenti bekerja ' +
-      'tanpa pesan galat. Salin ulang <b>seluruh</b> berkas dari paket yang sama, lalu ' +
-      'terapkan ulang Web App.</span></div>';
+      'Sebagian fitur dapat berhenti bekerja tanpa pesan galat.</span></div>' +
+      langkahBedaVersi(vPeladen);
   }
 
   html += '<div class="kisi kisi2">' +
@@ -8318,6 +8820,12 @@ function bagianVersi() {
      daftar perubahan kode. Pengguna perlu tahu apa yang berubah bagi
      dirinya, bukan nama fungsi yang diperbaiki. */
   html += '<div class="kartu"><h3>Riwayat perubahan</h3>' +
+    catatanVersi('1.7.0', '6 September 2026', [
+      'Galeri foto petak dan per pokok, dapat digeser dan diperbesar',
+      'Foto juga tampil di maptip peta — digeser langsung dari sana',
+      'Unggah beberapa foto sekaligus dalam satu kali kirim',
+      'Tampilan disesuaikan untuk tablet dan layar besar'
+    ]) +
     catatanVersi('1.6.0', '4 September 2026', [
       'Rekap bulanan: ringkasan, pembanding bulan sebelumnya, dan catatan penjelas',
       'Rekap tahunan: rincian dua belas bulan dan pembanding tahun sebelumnya',
@@ -8351,6 +8859,81 @@ function bagianVersi() {
       'Rilis pertama'
     ]) + '</div>';
   return html;
+}
+
+/**
+ * Langkah perbaikan yang SESUAI ARAH selisihnya.
+ *
+ * Dua keadaan ini berbeda sebab dan berbeda cara memperbaikinya, tetapi
+ * gejalanya di layar sama persis. Petunjuk yang menyebut keduanya
+ * sekaligus membuat pengguna mencoba langkah yang tidak relevan lebih
+ * dulu — dan pada pemasangan Apps Script, langkah yang paling sering
+ * terlewat justru penerapan ulang, bukan penempelan berkasnya.
+ */
+function langkahBedaVersi(vPeladen) {
+  var peladenLebihLama = bandingVersi(vPeladen, VERSI_KLIEN) < 0;
+  var pwa = !modeGas();
+
+  var html = '<div class="kartu" style="border-color:var(--bahaya)">' +
+    '<h4 style="color:var(--bahaya);margin-top:0">Yang perlu dilakukan</h4>';
+
+  if (peladenLebihLama) {
+    html += '<p style="font-size:.85rem">Antarmuka sudah versi baru, tetapi ' +
+      '<b>kode di peladen masih lama</b>. Ini hampir selalu berarti salah satu dari ' +
+      'dua hal berikut.</p>' +
+      '<ol style="font-size:.85rem;padding-left:18px;line-height:1.8;margin:0">' +
+      '<li><b>Penerapan Web App belum diperbarui.</b> Menempel kode baru di editor ' +
+      'tidak mengubah apa pun sampai diterapkan ulang: <b>Deploy ▸ Manage deployments ' +
+      '▸ ikon pensil ▸ Version: New version ▸ Deploy</b>. Inilah langkah yang paling ' +
+      'sering terlewat.</li>' +
+      '<li><b>Berkas <code>.gs</code> belum ditempel ulang.</b> Periksa dengan menu ' +
+      '<b>TaniPintar ▸ Cek Versi Berkas</b> dari Spreadsheet. Menu itu membandingkan ' +
+      'Code.gs dengan Index.html langsung di dalam proyek.</li>' +
+      '</ol>';
+    if (pwa) {
+      html += '<div class="spanduk kuning"><span>📱</span><span>' +
+        '<b>Aplikasi ini berjalan sebagai PWA</b>Berkas tampilan diambil dari hosting ' +
+        '(GitHub Pages), sedangkan kode peladen dari Apps Script — keduanya diperbarui ' +
+        'terpisah. Anda sudah mengunggah berkas tampilan yang baru; yang tertinggal ' +
+        'adalah penerapan ulang Web App-nya.</span></div>';
+    }
+  } else {
+    html += '<p style="font-size:.85rem">Kode di peladen sudah versi baru, tetapi ' +
+      '<b>berkas tampilan masih lama</b>.</p>' +
+      '<ol style="font-size:.85rem;padding-left:18px;line-height:1.8;margin:0">' +
+      (pwa
+        ? '<li><b>Unggah ulang berkas <code>index.html</code></b> dari folder ' +
+          '<code>github/</code> ke hosting Anda.</li>' +
+          '<li><b>Muat ulang paksa</b> di peramban (tahan tombol muat ulang, lalu ' +
+          'pilih pengosongan singgahan). Versi lama dapat tersimpan di perangkat ' +
+          'sampai singgahannya diganti.</li>'
+        : '<li><b>Tempel ulang seluruh isi <code>Index.html</code></b> dari paket yang ' +
+          'sama. Berkas ini besar dan penempelannya kadang terpotong diam-diam.</li>' +
+          '<li>Terapkan ulang: <b>Deploy ▸ Manage deployments ▸ ikon pensil ▸ ' +
+          'Version: New version ▸ Deploy</b>.</li>') +
+      '</ol>';
+  }
+
+  html += '<p style="font-size:.8rem;color:var(--redup);margin-top:10px">' +
+    'Setelah berhasil, jalankan juga <b>TaniPintar ▸ Perbarui Struktur Lembar</b> ' +
+    'agar kolom baru ditambahkan. Menu itu tidak mengubah data yang sudah ada.</p>' +
+    '</div>';
+  return html;
+}
+
+/**
+ * Membandingkan dua nomor versi bergaya 1.7.0.
+ * Perbandingan teks biasa keliru: '1.10.0' < '1.9.0' bila dibandingkan
+ * sebagai untaian huruf.
+ */
+function bandingVersi(a, b) {
+  var pa = String(a || '0').split('.');
+  var pb = String(b || '0').split('.');
+  for (var i = 0; i < Math.max(pa.length, pb.length); i++) {
+    var na = angka(pa[i], 0), nb = angka(pb[i], 0);
+    if (na !== nb) return na < nb ? -1 : 1;
+  }
+  return 0;
 }
 
 function catatanVersi(versi, tanggal, butir) {
@@ -9531,6 +10114,459 @@ function catatanLokal(kini, lalu) {
       teks: kini.hama.tingkatBerat + ' laporan kerusakan tingkat berat atau kritis.' });
   }
   return out;
+}
+
+
+/* ============================================================
+   PENAMPIL FOTO — geser, cubit-zoom, ketuk-ganda
+   ============================================================
+   Dibuat sendiri, bukan memakai pustaka luar, karena satu-satunya
+   pustaka yang tersedia di aplikasi ini adalah Leaflet. Menambah
+   pustaka baru berarti menambah berkas yang harus ditanam, diperiksa
+   lisensinya, dan diperbarui — untuk pekerjaan yang muat dalam
+   beberapa ratus baris.
+
+   Yang benar-benar dibutuhkan di lapangan: melihat perkembangan satu
+   pohon dari bulan ke bulan sambil berdiri di kebun, dengan satu
+   tangan, di bawah matahari.
+   ============================================================ */
+
+var _galeri = {
+  daftar: [],      // [{fotoUrl, judul, keterangan, tanggal}]
+  indeks: 0,
+  skala: 1,
+  geserX: 0,
+  geserY: 0
+};
+
+/* Keadaan sentuhan. Disimpan di luar objek galeri karena diperbarui
+   puluhan kali per detik saat jari bergerak. */
+var _sentuh = {
+  aktif: false, mulaiX: 0, mulaiY: 0, akhirX: 0, akhirY: 0,
+  jarakAwal: 0, skalaAwal: 1, geserAwalX: 0, geserAwalY: 0,
+  jariGanda: false, ketukTerakhir: 0
+};
+
+/**
+ * Membuka penampil. Menerima:
+ * - string  → satu foto (bentuk lama, tetap didukung)
+ * - larik   → daftar foto, masing-masing {fotoUrl, judul, keterangan}
+ */
+function bukaGaleri(sumber, indeksAwal) {
+  var daftar = [];
+  if (typeof sumber === 'string') {
+    if (!sumber) return;
+    daftar = [{ fotoUrl: sumber, judul: '', keterangan: '' }];
+  } else if (sumber && sumber.length) {
+    for (var i = 0; i < sumber.length; i++) {
+      var f = sumber[i];
+      if (typeof f === 'string') daftar.push({ fotoUrl: f, judul: '', keterangan: '' });
+      else if (f && f.fotoUrl) daftar.push(f);
+    }
+  }
+  if (!daftar.length) return;
+
+  _galeri.daftar = daftar;
+  _galeri.indeks = Math.min(Math.max(angka(indeksAwal), 0), daftar.length - 1);
+  aturSkalaGaleri(1, 0, 0);
+  gambarGaleri();
+
+  var el = $('zoomFoto');
+  el.classList.add('tampil');
+  pasangSentuhGaleri();
+
+  /* Penampil ikut masuk riwayat, supaya tombol Kembali di ponsel
+     menutup foto — bukan keluar dari aplikasi. */
+  if (!_galeriDiRiwayat) {
+    try {
+      history.pushState({ tp: 'galeri' }, '', location.hash || '');
+      _galeriDiRiwayat = true;
+    } catch (e) { /* peramban lama */ }
+  }
+}
+
+var _galeriDiRiwayat = false;
+
+/** Bentuk lama tetap dipakai di banyak tempat. */
+function zoomFoto(url) { bukaGaleri(url, 0); }
+
+function tutupGaleri() {
+  if (_galeriDiRiwayat) {
+    _galeriDiRiwayat = false;
+    try { history.back(); return; } catch (e) { /* lanjut tutup langsung */ }
+  }
+  tutupGaleriDom();
+}
+
+function tutupGaleriDom() {
+  var el = $('zoomFoto');
+  if (el) el.classList.remove('tampil');
+  _galeri.daftar = [];
+}
+
+function galeriTerbuka() {
+  var el = $('zoomFoto');
+  return !!(el && el.classList.contains('tampil'));
+}
+
+function gambarGaleri() {
+  var f = _galeri.daftar[_galeri.indeks];
+  if (!f) return;
+
+  var img = $('zoomFotoImg');
+  img.src = f.fotoUrl;
+  terapkanTransformGaleri();
+
+  var banyak = _galeri.daftar.length > 1;
+  $('galeriHitung').textContent = banyak
+    ? (_galeri.indeks + 1) + ' / ' + _galeri.daftar.length : '';
+  $('galeriKiri').style.display = banyak ? 'flex' : 'none';
+  $('galeriKanan').style.display = banyak ? 'flex' : 'none';
+
+  $('galeriJudul').textContent = f.judul || '';
+  $('galeriKet').textContent = f.keterangan || '';
+
+  /* Petak jempol hanya berguna bila fotonya lebih dari satu. */
+  var jempol = $('galeriJempol');
+  if (!banyak) {
+    jempol.innerHTML = '';
+    jempol.style.display = 'none';
+    return;
+  }
+  jempol.style.display = 'flex';
+  var html = '';
+  for (var i = 0; i < _galeri.daftar.length; i++) {
+    html += '<img src="' + esc(_galeri.daftar[i].fotoUrl) + '" alt="" ' +
+      (i === _galeri.indeks ? 'class="aktif" ' : '') +
+      'onclick="keGaleri(' + i + ')">';
+  }
+  jempol.innerHTML = html;
+
+  /* Deretan jempol digulir dengan menghitung sendiri, bukan dengan
+     scrollIntoView. scrollIntoView ikut menggulir wadah induknya, yang
+     menggeser seluruh tata letak penampil — termasuk tombol geser. */
+  var aktif = jempol.querySelector('img.aktif');
+  if (aktif) {
+    var tengah = aktif.offsetLeft - (jempol.clientWidth / 2) + (aktif.offsetWidth / 2);
+    jempol.scrollLeft = Math.max(0, tengah);
+  }
+}
+
+function keGaleri(i) {
+  if (i < 0 || i >= _galeri.daftar.length) return;
+  _galeri.indeks = i;
+  /* Perbesaran dikembalikan tiap berpindah foto: foto berikutnya yang
+     langsung tampil terpotong pada perbesaran foto sebelumnya membuat
+     orang mengira fotonya rusak. */
+  aturSkalaGaleri(1, 0, 0);
+  gambarGaleri();
+}
+
+function geserGaleri(arah) {
+  var n = _galeri.daftar.length;
+  if (n < 2) return;
+  keGaleri((_galeri.indeks + arah + n) % n);
+}
+
+function aturSkalaGaleri(skala, x, y) {
+  _galeri.skala = Math.min(Math.max(skala, 1), 5);
+  if (_galeri.skala === 1) { _galeri.geserX = 0; _galeri.geserY = 0; }
+  else { _galeri.geserX = x; _galeri.geserY = y; }
+}
+
+function terapkanTransformGaleri() {
+  var img = $('zoomFotoImg');
+  if (!img) return;
+  img.style.transform = 'translate(' + _galeri.geserX + 'px,' + _galeri.geserY +
+    'px) scale(' + _galeri.skala + ')';
+}
+
+function zoomGaleri(delta) {
+  aturSkalaGaleri(_galeri.skala + delta, _galeri.geserX, _galeri.geserY);
+  terapkanTransformGaleri();
+}
+
+/* ------------------------------------------------------------
+   SENTUHAN
+   ------------------------------------------------------------ */
+
+var _sentuhTerpasang = false;
+
+function jarakDuaJari(e) {
+  var dx = e.touches[0].clientX - e.touches[1].clientX;
+  var dy = e.touches[0].clientY - e.touches[1].clientY;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function pasangSentuhGaleri() {
+  if (_sentuhTerpasang) return;
+  _sentuhTerpasang = true;
+
+  var panggung = $('galeriPanggung');
+  var img = $('zoomFotoImg');
+  if (!panggung || !img) return;
+
+  panggung.addEventListener('touchstart', function (e) {
+    if (e.touches.length === 2) {
+      _sentuh.jariGanda = true;
+      _sentuh.jarakAwal = jarakDuaJari(e);
+      _sentuh.skalaAwal = _galeri.skala;
+      img.classList.add('geser');
+      return;
+    }
+    if (e.touches.length !== 1) return;
+    _sentuh.aktif = true;
+    _sentuh.jariGanda = false;
+    _sentuh.mulaiX = _sentuh.akhirX = e.touches[0].clientX;
+    _sentuh.mulaiY = _sentuh.akhirY = e.touches[0].clientY;
+    _sentuh.geserAwalX = _galeri.geserX;
+    _sentuh.geserAwalY = _galeri.geserY;
+  }, { passive: true });
+
+  panggung.addEventListener('touchmove', function (e) {
+    if (_sentuh.jariGanda && e.touches.length === 2) {
+      var rasio = jarakDuaJari(e) / (_sentuh.jarakAwal || 1);
+      aturSkalaGaleri(_sentuh.skalaAwal * rasio, _galeri.geserX, _galeri.geserY);
+      terapkanTransformGaleri();
+      e.preventDefault();
+      return;
+    }
+    if (!_sentuh.aktif || e.touches.length !== 1) return;
+    _sentuh.akhirX = e.touches[0].clientX;
+    _sentuh.akhirY = e.touches[0].clientY;
+
+    /* Saat foto diperbesar, satu jari berarti menggeser isi foto.
+       Saat tidak diperbesar, satu jari berarti berpindah foto. */
+    if (_galeri.skala > 1) {
+      _galeri.geserX = _sentuh.geserAwalX + (_sentuh.akhirX - _sentuh.mulaiX);
+      _galeri.geserY = _sentuh.geserAwalY + (_sentuh.akhirY - _sentuh.mulaiY);
+      img.classList.add('geser');
+      terapkanTransformGaleri();
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  panggung.addEventListener('touchend', function (e) {
+    img.classList.remove('geser');
+
+    if (_sentuh.jariGanda) {
+      _sentuh.jariGanda = false;
+      _sentuh.aktif = false;
+      return;
+    }
+    if (!_sentuh.aktif) return;
+    _sentuh.aktif = false;
+
+    var dx = _sentuh.akhirX - _sentuh.mulaiX;
+    var dy = _sentuh.akhirY - _sentuh.mulaiY;
+    var bergerak = Math.abs(dx) > 8 || Math.abs(dy) > 8;
+
+    /* Ketuk ganda: memperbesar, atau mengembalikan bila sudah besar.
+       Diperiksa lebih dulu karena ketukan tidak menghasilkan gerakan. */
+    if (!bergerak) {
+      var sekarang = Date.now();
+      if (sekarang - _sentuh.ketukTerakhir < 300) {
+        aturSkalaGaleri(_galeri.skala > 1 ? 1 : 2.5, 0, 0);
+        terapkanTransformGaleri();
+        _sentuh.ketukTerakhir = 0;
+      } else {
+        _sentuh.ketukTerakhir = sekarang;
+      }
+      return;
+    }
+
+    if (_galeri.skala > 1) return;   // sedang menggeser isi foto
+
+    /* Geser mendatar berpindah foto; geser ke bawah menutup penampil —
+       kebiasaan yang sudah dikenal dari aplikasi galeri ponsel. */
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) {
+      geserGaleri(dx < 0 ? 1 : -1);
+    } else if (dy > 90 && Math.abs(dx) < 60) {
+      tutupGaleri();
+    }
+  }, { passive: true });
+
+  /* Ketuk ganda dengan tetikus, untuk pemakaian di komputer. */
+  img.addEventListener('dblclick', function () {
+    aturSkalaGaleri(_galeri.skala > 1 ? 1 : 2.5, 0, 0);
+    terapkanTransformGaleri();
+  });
+
+  /* Menekan latar gelap di luar foto menutup penampil. */
+  panggung.addEventListener('click', function (e) {
+    if (e.target === panggung) tutupGaleri();
+  });
+}
+
+/* ------------------------------------------------------------
+   GALERI DI DALAM HALAMAN
+   ------------------------------------------------------------ */
+
+/**
+ * Deretan jempol yang dapat digulir mendatar. Menekan salah satunya
+ * membuka penampil pada foto itu.
+ *
+ * Daftar foto disimpan di _galeriSiap supaya penampil tidak perlu
+ * menerima seluruh base64 lewat atribut onclick — atribut sepanjang
+ * itu membuat HTML membengkak berlipat-lipat.
+ */
+var _galeriSiap = {};
+
+function galeriHtml(kunci, daftar) {
+  if (!daftar || !daftar.length) return '';
+  _galeriSiap[kunci] = daftar;
+  var html = '<div class="galeri">';
+  for (var i = 0; i < daftar.length; i++) {
+    html += '<div class="bingkai">' +
+      '<img src="' + esc(daftar[i].fotoUrl) + '" alt="" loading="lazy" ' +
+      'onclick="bukaGaleriSiap(\'' + jsq(kunci) + '\',' + i + ')">' +
+      (daftar[i].judul
+        ? '<small>' + esc(daftar[i].judul) + '</small>' : '') +
+      '</div>';
+  }
+  return html + '</div>';
+}
+
+function bukaGaleriSiap(kunci, indeks) {
+  bukaGaleri(_galeriSiap[kunci] || [], indeks);
+}
+
+/* ------------------------------------------------------------
+   PEMUATAN FOTO
+   ------------------------------------------------------------ */
+
+/* Foto tidak lagi ikut bootstrap, jadi diambil saat dibutuhkan lalu
+   disimpan sebentar di memori — membuka petak yang sama dua kali
+   berturut-turut tidak perlu mengunduh ulang. */
+var _cacheFotoPetak = {};
+var _cacheFotoPokok = {};
+
+function ambilFotoPetak(petakId) {
+  if (_cacheFotoPetak[petakId]) return Promise.resolve(_cacheFotoPetak[petakId]);
+  if (!S.daring) return Promise.resolve([]);
+  return panggil('foto_daftar', { petakId: petakId }).then(function (r) {
+    var daftar = (r.foto || []).map(function (f) {
+      return {
+        fotoUrl: f.fotoUrl,
+        judul: tglIndo(f.tanggal) + (f.hst ? ' · ' + angka(f.hst) + ' HST' : ''),
+        keterangan: [f.judul, f.fase, f.catatan].filter(function (x) {
+          return !!x;
+        }).join(' · '),
+        tanggal: f.tanggal, id: f.id
+      };
+    });
+    _cacheFotoPetak[petakId] = daftar;
+    return daftar;
+  }).catch(function () { return []; });
+}
+
+function ambilFotoPokok(pokokId) {
+  if (_cacheFotoPokok[pokokId]) return Promise.resolve(_cacheFotoPokok[pokokId]);
+  if (!S.daring) return Promise.resolve([]);
+  return panggil('pokok_foto', { pokokId: pokokId }).then(function (r) {
+    var daftar = (r.foto || []).map(function (f) {
+      return {
+        fotoUrl: f.fotoUrl,
+        judul: tglIndo(f.tanggal),
+        keterangan: [labelCatatanPokok(f.jenis), f.keterangan, f.operator]
+          .filter(function (x) { return !!x; }).join(' · '),
+        tanggal: f.tanggal, id: f.id
+      };
+    });
+    _cacheFotoPokok[pokokId] = daftar;
+    return daftar;
+  }).catch(function () { return []; });
+}
+
+/** Dipanggil setelah menyimpan foto baru, agar galeri ikut segar. */
+function lupakanCacheFoto(petakId, pokokId) {
+  if (petakId) delete _cacheFotoPetak[petakId];
+  if (pokokId) delete _cacheFotoPokok[pokokId];
+}
+
+/**
+ * Mengisi wadah galeri yang sudah tergambar. Dipakai karena foto
+ * datang belakangan — halaman tidak boleh menunggu foto selesai
+ * diunduh sebelum menampilkan apa pun.
+ */
+function isiGaleriKeWadah(idWadah, kunci, janji, kosongTeks) {
+  janji.catch(function () { return []; }).then(function (daftar) {
+    var w = $(idWadah);
+    if (!w) return;
+    if (!daftar.length) {
+      w.innerHTML = '<div class="kosong" style="padding:14px">' +
+        '<span class="ik">📷</span>' + esc(kosongTeks) + '</div>';
+      return;
+    }
+    w.innerHTML = galeriHtml(kunci, daftar);
+  });
+}
+
+/* ------------------------------------------------------------
+   GALERI DI DALAM POPUP PETA
+   ------------------------------------------------------------ */
+
+/* Popup Leaflet digambar ulang tiap kali dibuka, jadi keadaan
+   "foto ke berapa" disimpan per kunci di luar popup itu sendiri. */
+var _popFoto = {};
+
+function popupGaleriHtml(kunci) {
+  return '<div class="popFoto" id="pop_' + esc(kunci) + '">' +
+    '<div class="kosong" style="padding:8px;font-size:.7rem">Memuat foto…</div></div>';
+}
+
+/**
+ * Mengisi galeri di dalam popup setelah fotonya selesai diambil.
+ * Bila tidak ada foto sama sekali, seluruh bagiannya dihapus —
+ * kotak kosong bertuliskan "tidak ada foto" hanya memakan ruang
+ * pada popup yang memang sempit.
+ */
+function isiPopupGaleri(kunci, janji) {
+  janji.then(function (daftar) {
+    var w = $('pop_' + kunci);
+    if (!w) return;
+    if (!daftar.length) { w.innerHTML = ''; return; }
+    _popFoto[kunci] = { daftar: daftar, indeks: 0 };
+    _galeriSiap[kunci] = daftar;
+    gambarPopupGaleri(kunci);
+  }).catch(function () {
+    /* Kegagalan pengambilan tidak boleh meninggalkan tulisan
+       "Memuat foto…" yang menggantung selamanya — pengguna akan
+       menunggu sesuatu yang tidak akan pernah datang. */
+    var w = $('pop_' + kunci);
+    if (w) {
+      w.innerHTML = '<small style="color:var(--redup);font-size:.66rem">' +
+        'Foto tidak dapat dimuat.</small>';
+    }
+  });
+}
+
+function gambarPopupGaleri(kunci) {
+  var st = _popFoto[kunci];
+  var w = $('pop_' + kunci);
+  if (!st || !w) return;
+  var f = st.daftar[st.indeks];
+  var banyak = st.daftar.length > 1;
+
+  w.innerHTML = '<div class="bingkaiPop">' +
+    (banyak ? '<button type="button" class="navPop kiri" ' +
+      'onclick="geserPopupGaleri(\'' + jsq(kunci) + '\',-1)">&#8249;</button>' : '') +
+    '<img src="' + esc(f.fotoUrl) + '" alt="" ' +
+    'onclick="bukaGaleriSiap(\'' + jsq(kunci) + '\',' + st.indeks + ')">' +
+    (banyak ? '<button type="button" class="navPop kanan" ' +
+      'onclick="geserPopupGaleri(\'' + jsq(kunci) + '\',1)">&#8250;</button>' +
+      '<span class="hitungPop">' + (st.indeks + 1) + '/' + st.daftar.length +
+      '</span>' : '') +
+    '</div>' +
+    '<small style="display:block;color:var(--redup);font-size:.66rem;margin-top:3px">' +
+    esc(f.judul || '') + ' · ketuk untuk memperbesar</small>';
+}
+
+function geserPopupGaleri(kunci, arah) {
+  var st = _popFoto[kunci];
+  if (!st) return;
+  st.indeks = (st.indeks + arah + st.daftar.length) % st.daftar.length;
+  gambarPopupGaleri(kunci);
 }
 
 </script>
