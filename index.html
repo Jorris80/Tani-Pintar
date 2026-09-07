@@ -877,6 +877,17 @@ span.kotakIsian.terisi>button.kosongkan{display:flex}
 /* Pratinjau unggahan beberapa foto. Ukuran petak dibuat cukup besar
    untuk dikenali isinya, tetapi tetap muat tiga kolom di layar ponsel
    tersempit. */
+/* Panel pengukuran GPS. Angkanya sengaja besar: dibaca sambil berjalan
+   di kebun, sering di bawah matahari langsung. */
+.panelUkur{border:2px solid var(--utama2)}
+.ukurAngka{gap:8px}
+.kotakUkur{text-align:center;background:var(--latar);border-radius:11px;padding:9px 4px}
+.kotakUkur .nilai{font-size:1.35rem;font-weight:800;line-height:1.15;color:var(--utama)}
+.kotakUkur .label{font-size:.7rem;font-weight:700;color:var(--tinta);margin-top:1px}
+.kotakUkur .ket{font-size:.62rem;color:var(--redup);margin-top:1px}
+html[data-mode="silau"] .kotakUkur .nilai{font-size:1.5rem}
+@media(min-width:640px){.kotakUkur .nilai{font-size:1.6rem}}
+
 .petakFoto{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:4px}
 @media(min-width:640px){.petakFoto{grid-template-columns:repeat(5,1fr)}}
 @media(min-width:900px){.petakFoto{grid-template-columns:repeat(6,1fr)}}
@@ -1285,7 +1296,7 @@ if ('serviceWorker' in navigator) {
 <script>
 
 /* Versi antarmuka. HARUS naik bersama APP_VERSI di Code.gs. */
-var VERSI_KLIEN = '1.7.0';
+var VERSI_KLIEN = '1.8.0';
 var TANGGAL_RILIS_KLIEN = '2026-09-06';
 
 /* ============================================================
@@ -1453,7 +1464,7 @@ function modeGas() {
 }
 
 function urlGas() {
-  return (window.TANIPINTAR_CONFIG && window.TANIPINTAR_CONFIG.gasUrl) || 'https://script.google.com/macros/s/AKfycbwSbDs7R-Z2FS38FMsDCD96Q9fgwFUBXXu1UePNF7BGPqopL5VBDpcklPviXMxjVvdp/exec';
+  return (window.TANIPINTAR_CONFIG && window.TANIPINTAR_CONFIG.gasUrl) || '';
 }
 
 /**
@@ -3626,21 +3637,22 @@ function tabPetak() {
       'Peta ditampilkan sebagai kisi lokal. Isi kunci di Setelan ▸ Peta Dasar.</span></div>';
   }
 
+  html += '<div id="wadahUkur">' + panelUkur() + '</div>';
   html += '<div id="peta" class="peta"></div>';
   if (bolehUbah()) {
     html += '<div class="baris takCetak" id="panelGambar" style="margin-top:10px"></div>';
   }
   html += '<div class="baris takCetak" style="margin-top:8px">' +
     '<button class="tbl sekunder kecil" onclick="unduhGeojson()">⬇️ Ekspor GeoJSON</button>' +
-    (bolehKelola() ? '<button class="tbl sekunder kecil" onclick="imporGeojson()">' +
-      '⬆️ Impor GeoJSON</button>' : '') +
+    (bolehKelola() ? '<button class="tbl sekunder kecil" onclick="bukaImporBerkas()">' +
+      '⬆️ Impor SHP / KML / GeoJSON</button>' : '') +
     '<span style="font-size:.7rem;color:var(--redup)">GeoJSON bisa dibuka di QGIS ' +
     'maupun QField untuk pekerjaan lapangan.</span></div>';
   html += '</div>';
 
   html += '<div class="kartu"><div class="baris" style="margin-bottom:6px">' +
     '<h3 style="margin:0">Daftar Petak (' + petak.length + ')</h3>' +
-    (bolehUbah() ? '<button class="tbl kecil kanan" onclick="formPetak()">+ Petak</button>' : '') +
+    (bolehUbah() ? '<button class="tbl kecil kanan" onclick="pilihCaraTambahPetak()">+ Petak</button>' : '') +
     '</div>';
 
   if (!petak.length) {
@@ -8820,6 +8832,12 @@ function bagianVersi() {
      daftar perubahan kode. Pengguna perlu tahu apa yang berubah bagi
      dirinya, bukan nama fungsi yang diperbaiki. */
   html += '<div class="kartu"><h3>Riwayat perubahan</h3>' +
+    catatanVersi('1.8.0', '6 September 2026', [
+      'Tiga cara menambah petak: ketuk batas di peta, ukur keliling dengan GPS, ' +
+        'atau impor berkas',
+      'Pengukuran keliling sambil berjalan — luas dan keliling terhitung langsung',
+      'Impor batas dari SHP (dengan DBF dan PRJ), KML, dan GeoJSON'
+    ]) +
     catatanVersi('1.7.0', '6 September 2026', [
       'Galeri foto petak dan per pokok, dapat digeser dan diperbesar',
       'Foto juga tampil di maptip peta — digeser langsung dari sana',
@@ -10567,6 +10585,1207 @@ function geserPopupGaleri(kunci, arah) {
   if (!st) return;
   st.indeks = (st.indeks + arah + st.daftar.length) % st.daftar.length;
   gambarPopupGaleri(kunci);
+}
+
+
+/* ============================================================
+   TAMBAH PETAK — tiga cara
+   ============================================================
+   1. Ketuk batas di peta      — bila batasnya sudah tergambar jelas
+   2. Ukur keliling dengan GPS — berjalan menyusuri batas kebun
+   3. Impor berkas             — SHP, KML, atau GeoJSON (lihat 17-impor.js)
+
+   Bagian pengukuran GPS di berkas ini mengikuti pola yang sudah
+   dikenal pengguna GeoUkur GPS: rekam berjalan, saring berdasarkan
+   ketelitian, luas dan keliling terhitung langsung di layar.
+   ============================================================ */
+
+function pilihCaraTambahPetak() {
+  var html =
+    '<p style="font-size:.85rem;color:var(--redup)">Pilih cara yang paling sesuai ' +
+    'dengan keadaan Anda saat ini.</p>' +
+
+    kartuCara('🗺️', 'Ketuk batas di peta',
+      'Bila batas kebun sudah terlihat jelas di citra satelit, atau Anda sudah tahu ' +
+      'persis letak sudut-sudutnya.',
+      ['Paling cepat — tidak perlu ke lapangan',
+       'Ketelitian bergantung pada mutu citra peta',
+       'Butuh peta dasar berkunci, tidak bisa dengan kisi lokal'],
+      'mulaiGambarDariPilihan()') +
+
+    kartuCara('🚶', 'Ukur keliling dengan GPS',
+      'Berjalan menyusuri batas kebun sambil ponsel merekam jejaknya. Cara yang ' +
+      'paling tepat untuk lahan yang batasnya tidak terlihat dari udara.',
+      ['Ketelitian terbaik — diukur di tempatnya',
+       'Perlu berjalan mengelilingi kebun',
+       'Berjalan di jalur yang salah tetap menghasilkan angka; periksa hasilnya'],
+      'bukaUkurGps()') +
+
+    kartuCara('📂', 'Impor dari berkas',
+      'Bila lahan sudah pernah dipetakan — misalnya oleh surveyor, dinas, atau ' +
+      'aplikasi pemetaan lain.',
+      ['Menerima SHP (beserta DBF dan PRJ), KML, dan GeoJSON',
+       'Bisa memasukkan banyak petak sekaligus',
+       'Ketelitiannya mengikuti mutu berkas asalnya'],
+      'bukaImporBerkas()') +
+
+    '<hr class="pisah">' +
+    '<button class="tbl sekunder lebar" onclick="modalTutup();formPetak()">' +
+    '✏️ Isi manual tanpa batas peta</button>' +
+    '<p class="bantu">Luas diketik sendiri. Petak tanpa batas tidak muncul di peta ' +
+    'dan tidak bisa dipakai untuk menyusun titik tanam pokok.</p>';
+
+  modalBuka('Tambah petak baru', html);
+}
+
+function kartuCara(ikon, judul, ringkas, butir, aksi) {
+  var html = '<div class="kartu rapat" style="cursor:pointer" onclick="' + aksi + '">' +
+    '<div class="baris" style="align-items:flex-start;gap:10px">' +
+    '<div style="font-size:1.5rem;line-height:1.2">' + ikon + '</div>' +
+    '<div style="flex:1">' +
+    '<b style="font-size:1rem">' + esc(judul) + '</b>' +
+    '<div style="font-size:.83rem;color:var(--redup);margin-top:3px">' +
+    esc(ringkas) + '</div>' +
+    '<ul style="font-size:.78rem;color:var(--redup);padding-left:16px;margin:6px 0 0;' +
+    'line-height:1.6">';
+  for (var i = 0; i < butir.length; i++) html += '<li>' + esc(butir[i]) + '</li>';
+  return html + '</ul></div><div style="align-self:center;color:var(--redup)">›</div>' +
+    '</div></div>';
+}
+
+/* modalTutupLalu dipakai, bukan modalTutup lalu lanjut langsung:
+   penutupan modal menarik satu langkah riwayat secara asinkron, dan
+   tindakan yang berjalan sebelum tarikan itu selesai akan terkena
+   popstate-nya — modal yang baru dibuka ikut tertutup. */
+function mulaiGambarDariPilihan() {
+  modalTutupLalu(function () {
+    if (S.tab !== 'petak') pindah('petak');
+    setTimeout(function () { mulaiGambar(); }, 400);
+  });
+}
+
+/* ============================================================
+   PENGUKURAN KELILING DENGAN GPS
+   ============================================================ */
+
+var _ukur = {
+  aktif: false,
+  jeda: false,
+  otomatis: true,
+  titik: [],          // [lat, lng, ketelitian, waktu]
+  pantau: null,       // id watchPosition
+  posisiKini: null,
+  ketelitianMaks: 10, // meter
+  jarakMinimal: 3,    // meter
+  penandaKini: null,
+  lingkaranKini: null,
+  jalurLayer: null,
+  titikLayer: [],
+  kunciLayar: null,
+  mulaiPada: 0
+};
+
+function bukaUkurGps() {
+  if (!navigator.geolocation) {
+    toast('Perangkat ini tidak mendukung GPS.', 'galat');
+    return;
+  }
+  modalTutupLalu(function () {
+    if (S.tab !== 'petak') pindah('petak');
+    S.modeUkur = true;
+    setTimeout(function () {
+      render();
+      setTimeout(mulaiUkur, 500);
+    }, 300);
+  });
+}
+
+/**
+ * Panel pengukuran. Sengaja menutupi sebagian layar dan berhuruf besar:
+ * dipakai sambil berjalan di kebun, sering di bawah matahari langsung,
+ * kadang dengan tangan berlumpur.
+ */
+function panelUkur() {
+  if (!S.modeUkur) return '';
+
+  var n = _ukur.titik.length;
+  var luas = n >= 3 ? luasPoligonM2(titikSaja()) : 0;
+  var keliling = kelilingM(titikSaja(), n >= 3);
+  var ket = _ukur.posisiKini ? Math.round(_ukur.posisiKini.coords.accuracy) : null;
+
+  var mutu = ket === null ? 'menunggu'
+    : (ket <= _ukur.ketelitianMaks ? 'baik'
+      : (ket <= _ukur.ketelitianMaks * 2 ? 'sedang' : 'buruk'));
+  var warnaMutu = mutu === 'baik' ? 'hijau'
+    : (mutu === 'sedang' ? 'kuning' : (mutu === 'buruk' ? 'merah' : 'abu'));
+
+  var html = '<div class="kartu panelUkur takCetak">' +
+    '<div class="baris" style="margin-bottom:8px">' +
+    '<b style="font-size:1rem">🚶 Ukur keliling dengan GPS</b>' +
+    '<span class="lencana ' + warnaMutu + ' kanan">' +
+    (ket === null ? 'Mencari sinyal…' : 'Ketelitian ± ' + ket + ' m') + '</span></div>';
+
+  if (mutu === 'buruk') {
+    html += '<div class="spanduk merah"><span>📡</span><span>' +
+      '<b>Sinyal GPS lemah</b>Titik tidak direkam selama ketelitiannya di atas ' +
+      _ukur.ketelitianMaks + ' m. Menjauhlah dari pohon rimbun atau bangunan, ' +
+      'lalu tunggu beberapa saat.</span></div>';
+  }
+
+  html += '<div class="kisi kisi3 ukurAngka">' +
+    kotakUkur(rp(Math.round(luas)), 'm² luas',
+              luas ? haTeks(luas) : 'perlu 3 titik') +
+    kotakUkur(rp(Math.round(keliling)), 'm keliling',
+              n >= 3 ? 'termasuk penutup' : 'jalur terekam') +
+    kotakUkur(String(n), 'titik',
+              _ukur.otomatis ? 'rekam otomatis' : 'rekam manual') +
+    '</div>';
+
+  html += '<div class="baris takCetak" style="margin-top:10px">';
+  if (!_ukur.aktif) {
+    html += '<button class="tbl lebar" onclick="mulaiUkur()">▶️ Mulai merekam</button>';
+  } else if (_ukur.jeda) {
+    html += '<button class="tbl" onclick="lanjutUkur()">▶️ Lanjutkan</button>' +
+      '<button class="tbl sekunder" onclick="hentikanUkur()">■ Selesai</button>';
+  } else {
+    html += '<button class="tbl sekunder" onclick="jedaUkur()">⏸️ Jeda</button>' +
+      (!_ukur.otomatis
+        ? '<button class="tbl" onclick="rekamTitikManual()">📍 Rekam titik</button>'
+        : '') +
+      '<button class="tbl sekunder" onclick="hentikanUkur()">■ Selesai</button>';
+  }
+  html += '</div>';
+
+  html += '<div class="baris takCetak" style="margin-top:6px">' +
+    '<button class="tbl sekunder kecil" onclick="hapusTitikUkurTerakhir()"' +
+    (n ? '' : ' disabled') + '>↩️ Hapus titik terakhir</button>' +
+    '<button class="tbl sekunder kecil" onclick="gantiModeRekam()">' +
+    (_ukur.otomatis ? '✋ Ganti ke rekam manual' : '🔄 Ganti ke rekam otomatis') +
+    '</button>' +
+    '<button class="tbl sekunder kecil" onclick="setelanUkur()">⚙️ Setelan</button>' +
+    '<button class="tbl bahaya kecil kanan" onclick="batalUkur()">Batal</button>' +
+    '</div>';
+
+  if (n >= 3) {
+    html += '<button class="tbl hijau lebar" style="margin-top:8px" ' +
+      'onclick="simpanHasilUkur()">✓ Simpan sebagai petak (' +
+      rp(Math.round(luas)) + ' m²)</button>';
+  } else {
+    html += '<p class="bantu" style="margin-top:8px">Berjalanlah menyusuri batas ' +
+      'kebun. Titik direkam sendiri setiap ' + _ukur.jarakMinimal +
+      ' meter selama sinyal cukup baik. Minimal 3 titik.</p>';
+  }
+
+  return html + '</div>';
+}
+
+/**
+ * Luas dalam hektare dengan koma sebagai pemisah desimal.
+ *
+ * toFixed menghasilkan titik desimal gaya Inggris. Di panel ini angka
+ * meter persegi memakai titik sebagai pemisah ribuan, jadi "10.072 m²"
+ * dan "1.0072 ha" akan berdampingan dengan arti titik yang berbeda —
+ * membingungkan justru karena kedua baris itu bersebelahan.
+ */
+function haTeks(m2) {
+  return (angka(m2) / 10000).toFixed(4).replace('.', ',') + ' ha';
+}
+
+function kotakUkur(angkaBesar, label, ket) {
+  return '<div class="kotakUkur">' +
+    '<div class="nilai">' + esc(angkaBesar) + '</div>' +
+    '<div class="label">' + esc(label) + '</div>' +
+    '<div class="ket">' + esc(ket) + '</div></div>';
+}
+
+function titikSaja() {
+  return _ukur.titik.map(function (t) { return [t[0], t[1]]; });
+}
+
+/**
+ * Keliling dalam meter. Bila tertutup, ruas terakhir kembali ke titik
+ * pertama ikut dihitung — itulah keliling yang dimaksud orang di
+ * lapangan, bukan panjang jalur yang dilalui.
+ */
+function kelilingM(titik, tertutup) {
+  if (!titik || titik.length < 2) return 0;
+  var total = 0;
+  for (var i = 0; i < titik.length - 1; i++) {
+    total += jarakMeter(titik[i], titik[i + 1]);
+  }
+  if (tertutup && titik.length >= 3) {
+    total += jarakMeter(titik[titik.length - 1], titik[0]);
+  }
+  return total;
+}
+
+/** Jarak haversine, cukup teliti pada jarak beberapa ratus meter. */
+function jarakMeter(a, b) {
+  var R = 6371000;
+  var dLat = (b[0] - a[0]) * Math.PI / 180;
+  var dLng = (b[1] - a[1]) * Math.PI / 180;
+  var la1 = a[0] * Math.PI / 180, la2 = b[0] * Math.PI / 180;
+  var h = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+/* ------------------------------------------------------------
+   PEREKAMAN
+   ------------------------------------------------------------ */
+
+function mulaiUkur() {
+  if (!navigator.geolocation) { toast('GPS tidak tersedia.', 'galat'); return; }
+  _ukur.aktif = true;
+  _ukur.jeda = false;
+  _ukur.mulaiPada = Date.now();
+
+  if (_ukur.pantau === null) {
+    _ukur.pantau = navigator.geolocation.watchPosition(
+      terimaPosisiUkur,
+      function (e) {
+        toast('GPS bermasalah: ' + (e.message || 'izin ditolak'), 'galat');
+      },
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+    );
+  }
+
+  kunciLayarAktif();
+  perbaruiPanelUkur();
+  toast(_ukur.otomatis
+    ? 'Berjalanlah menyusuri batas kebun. Titik direkam sendiri.'
+    : 'Tekan "Rekam titik" di setiap sudut batas kebun.');
+}
+
+function jedaUkur() {
+  _ukur.jeda = true;
+  perbaruiPanelUkur();
+  toast('Perekaman dijeda. Posisi tetap dipantau.');
+}
+
+function lanjutUkur() {
+  _ukur.jeda = false;
+  perbaruiPanelUkur();
+}
+
+function hentikanUkur() {
+  _ukur.jeda = true;
+  _ukur.aktif = false;
+  perbaruiPanelUkur();
+  if (_ukur.titik.length < 3) {
+    toast('Baru ' + _ukur.titik.length + ' titik. Minimal 3 untuk membentuk petak.',
+          'galat');
+  } else {
+    toast('Perekaman selesai. Periksa bentuknya di peta sebelum menyimpan.', 'sukses');
+  }
+}
+
+function batalUkur() {
+  konfirmasi('Batalkan pengukuran?',
+    _ukur.titik.length
+      ? '<b>' + _ukur.titik.length + ' titik</b> yang sudah direkam akan hilang.'
+      : 'Belum ada titik yang direkam.',
+    function () { tutupUkur(); render(); }, 'Batalkan', true);
+}
+
+function tutupUkur() {
+  if (_ukur.pantau !== null) {
+    try { navigator.geolocation.clearWatch(_ukur.pantau); } catch (e) {}
+    _ukur.pantau = null;
+  }
+  lepasKunciLayar();
+  bersihkanLapisanUkur();
+  _ukur.aktif = false;
+  _ukur.jeda = false;
+  _ukur.titik = [];
+  _ukur.posisiKini = null;
+  S.modeUkur = false;
+}
+
+function terimaPosisiUkur(pos) {
+  _ukur.posisiKini = pos;
+  gambarPosisiKini(pos);
+
+  if (!_ukur.aktif || _ukur.jeda || !_ukur.otomatis) {
+    perbaruiPanelUkur();
+    return;
+  }
+
+  /* Titik dengan ketelitian buruk TIDAK direkam. Merekamnya berarti
+     menyimpan sudut kebun yang letaknya meleset belasan meter — dan
+     kesalahan itu tidak akan pernah ketahuan lagi setelah disimpan. */
+  if (pos.coords.accuracy > _ukur.ketelitianMaks) {
+    perbaruiPanelUkur();
+    return;
+  }
+
+  var baru = [pos.coords.latitude, pos.coords.longitude];
+  if (_ukur.titik.length) {
+    var terakhir = _ukur.titik[_ukur.titik.length - 1];
+    /* Jarak minimal mencegah puluhan titik menumpuk saat berhenti
+       sejenak — GPS tetap bergerak-gerak meski orangnya diam. */
+    if (jarakMeter([terakhir[0], terakhir[1]], baru) < _ukur.jarakMinimal) {
+      perbaruiPanelUkur();
+      return;
+    }
+  }
+
+  tambahTitikUkur(pos);
+}
+
+function rekamTitikManual() {
+  var pos = _ukur.posisiKini;
+  if (!pos) { toast('Posisi GPS belum didapat.', 'galat'); return; }
+  if (pos.coords.accuracy > _ukur.ketelitianMaks * 2) {
+    konfirmasi('Ketelitian rendah',
+      'Ketelitian saat ini ± ' + Math.round(pos.coords.accuracy) + ' m, di atas ' +
+      'batas ' + _ukur.ketelitianMaks + ' m.<br><br>Titik yang direkam sekarang bisa ' +
+      'meleset sejauh itu dari sudut kebun yang sebenarnya.',
+      function () { tambahTitikUkur(pos); }, 'Rekam saja');
+    return;
+  }
+  tambahTitikUkur(pos);
+}
+
+function tambahTitikUkur(pos) {
+  _ukur.titik.push([pos.coords.latitude, pos.coords.longitude,
+                    Math.round(pos.coords.accuracy), Date.now()]);
+  gambarJalurUkur();
+  perbaruiPanelUkur();
+}
+
+function hapusTitikUkurTerakhir() {
+  if (!_ukur.titik.length) return;
+  _ukur.titik.pop();
+  gambarJalurUkur();
+  perbaruiPanelUkur();
+}
+
+function gantiModeRekam() {
+  _ukur.otomatis = !_ukur.otomatis;
+  perbaruiPanelUkur();
+  toast(_ukur.otomatis
+    ? 'Rekam otomatis: titik diambil sendiri sambil Anda berjalan.'
+    : 'Rekam manual: tekan tombol di setiap sudut batas.');
+}
+
+function setelanUkur() {
+  var ruas = [
+    { k: 'ketelitianMaks', n: 'Batas ketelitian (meter)', t: 'angka',
+      bawaan: _ukur.ketelitianMaks,
+      help: 'Titik dengan ketelitian di atas angka ini tidak direkam. Nilai kecil ' +
+            'lebih teliti tetapi lebih sering menolak merekam di bawah tajuk pohon.' },
+    { k: 'jarakMinimal', n: 'Jarak minimal antartitik (meter)', t: 'angka',
+      bawaan: _ukur.jarakMinimal,
+      help: 'Mencegah titik menumpuk saat Anda berhenti sejenak. Untuk kebun kecil ' +
+            'atau berbatas berliku, perkecil angkanya.' }
+  ];
+  modalBuka('Setelan pengukuran', bentukRuas(ruas, {}), function () {
+    var v = kumpulkanRuas();
+    var kt = angka(v.ketelitianMaks, 10);
+    var jm = angka(v.jarakMinimal, 3);
+    if (kt < 1 || kt > 100) { toast('Batas ketelitian 1–100 meter.', 'galat'); return false; }
+    if (jm < 0.5 || jm > 50) { toast('Jarak minimal 0,5–50 meter.', 'galat'); return false; }
+    _ukur.ketelitianMaks = kt;
+    _ukur.jarakMinimal = jm;
+    perbaruiPanelUkur();
+    return true;
+  });
+}
+
+function simpanHasilUkur() {
+  if (_ukur.titik.length < 3) { toast('Minimal 3 titik.', 'galat'); return; }
+  var titik = titikSaja();
+  var luas = luasPoligonM2(titik);
+  var keliling = kelilingM(titik, true);
+  var ketRerata = 0;
+  for (var i = 0; i < _ukur.titik.length; i++) ketRerata += _ukur.titik[i][2];
+  ketRerata = Math.round(ketRerata / _ukur.titik.length);
+  var menit = Math.round((Date.now() - _ukur.mulaiPada) / 60000);
+
+  konfirmasi('Simpan hasil pengukuran?',
+    '<div class="kisi kisi2">' +
+    barisInfo('Luas', rp(Math.round(luas)) + ' m² (' + haTeks(luas) + ')') +
+    barisInfo('Keliling', rp(Math.round(keliling)) + ' m') +
+    barisInfo('Jumlah titik', _ukur.titik.length) +
+    barisInfo('Ketelitian rerata', '± ' + ketRerata + ' m') +
+    '</div><p style="font-size:.82rem;color:var(--redup);margin-top:8px">' +
+    'Diukur dalam ' + (menit < 1 ? 'kurang dari semenit' : menit + ' menit') +
+    '. Periksa dulu bentuknya di peta — berjalan di jalur yang salah tetap ' +
+    'menghasilkan angka yang tampak meyakinkan.</p>',
+    function () {
+      var salinan = titik.slice();
+      tutupUkur();
+      render();
+      setTimeout(function () { formPetak(null, salinan); }, 300);
+    }, 'Simpan');
+}
+
+/* ------------------------------------------------------------
+   TAMPILAN DI PETA
+   ------------------------------------------------------------ */
+
+function gambarPosisiKini(pos) {
+  if (!_peta || !adaLeaflet()) return;
+  var pusat = [pos.coords.latitude, pos.coords.longitude];
+
+  try {
+    if (!_ukur.penandaKini) {
+      _ukur.penandaKini = L.circleMarker(pusat, {
+        radius: 7, color: '#fff', weight: 3,
+        fillColor: '#2C4A2B', fillOpacity: 1
+      }).addTo(_peta);
+      /* Lingkaran ketelitian: pengguna berhak melihat seberapa yakin
+         ponselnya, bukan hanya sebuah titik yang terlihat pasti. */
+      _ukur.lingkaranKini = L.circle(pusat, {
+        radius: pos.coords.accuracy, color: '#4F6F52', weight: 1,
+        fillColor: '#7FA96B', fillOpacity: 0.15
+      }).addTo(_peta);
+      _peta.setView(pusat, 19);
+    } else {
+      _ukur.penandaKini.setLatLng(pusat);
+      _ukur.lingkaranKini.setLatLng(pusat);
+      _ukur.lingkaranKini.setRadius(pos.coords.accuracy);
+      if (_ukur.aktif && !_ukur.jeda) _peta.panTo(pusat, { animate: true });
+    }
+  } catch (e) { /* peta belum siap */ }
+}
+
+function gambarJalurUkur() {
+  if (!_peta || !adaLeaflet()) return;
+  for (var i = 0; i < _ukur.titikLayer.length; i++) {
+    try { _peta.removeLayer(_ukur.titikLayer[i]); } catch (e) {}
+  }
+  _ukur.titikLayer = [];
+  if (_ukur.jalurLayer) {
+    try { _peta.removeLayer(_ukur.jalurLayer); } catch (e) {}
+    _ukur.jalurLayer = null;
+  }
+
+  var titik = titikSaja();
+  if (titik.length >= 2) {
+    _ukur.jalurLayer = (titik.length >= 3)
+      ? L.polygon(titik, { color: '#C7924A', weight: 3, fillOpacity: 0.18,
+                           dashArray: '6,4' })
+      : L.polyline(titik, { color: '#C7924A', weight: 3, dashArray: '6,4' });
+    try { _ukur.jalurLayer.addTo(_peta); } catch (e) {}
+  }
+
+  for (var j = 0; j < titik.length; j++) {
+    try {
+      var m = L.circleMarker(titik[j], {
+        radius: 5, color: '#C7924A', weight: 2,
+        fillColor: '#fff', fillOpacity: 1
+      }).addTo(_peta);
+      m.bindPopup('Titik ' + (j + 1) + ' · ketelitian ± ' + _ukur.titik[j][2] + ' m');
+      _ukur.titikLayer.push(m);
+    } catch (e) {}
+  }
+}
+
+function bersihkanLapisanUkur() {
+  var lapisan = [_ukur.penandaKini, _ukur.lingkaranKini, _ukur.jalurLayer];
+  for (var i = 0; i < lapisan.length; i++) {
+    if (lapisan[i]) { try { _peta.removeLayer(lapisan[i]); } catch (e) {} }
+  }
+  for (var j = 0; j < _ukur.titikLayer.length; j++) {
+    try { _peta.removeLayer(_ukur.titikLayer[j]); } catch (e) {}
+  }
+  _ukur.penandaKini = null;
+  _ukur.lingkaranKini = null;
+  _ukur.jalurLayer = null;
+  _ukur.titikLayer = [];
+}
+
+/** Menggambar ulang panel saja, bukan seluruh halaman. */
+function perbaruiPanelUkur() {
+  var el = $('wadahUkur');
+  if (el) el.innerHTML = panelUkur();
+}
+
+/* ------------------------------------------------------------
+   LAYAR TETAP MENYALA
+   ------------------------------------------------------------ */
+
+/**
+ * Layar yang padam menghentikan pemantauan GPS di sebagian peramban
+ * ponsel — pengukuran berhenti di tengah jalan tanpa pemberitahuan.
+ * Wake Lock tidak tersedia di semua peramban, jadi kegagalannya
+ * ditelan diam-diam; yang penting perekamannya tetap jalan.
+ */
+function kunciLayarAktif() {
+  if (!navigator.wakeLock || _ukur.kunciLayar) return;
+  try {
+    navigator.wakeLock.request('screen').then(function (k) {
+      _ukur.kunciLayar = k;
+    }).catch(function () { /* diabaikan */ });
+  } catch (e) { /* diabaikan */ }
+}
+
+function lepasKunciLayar() {
+  if (!_ukur.kunciLayar) return;
+  try { _ukur.kunciLayar.release(); } catch (e) {}
+  _ukur.kunciLayar = null;
+}
+
+
+/* ============================================================
+   IMPOR BATAS PETAK — SHP, KML, GeoJSON
+   ============================================================
+   Diurai seluruhnya di dalam peramban. Tidak ada berkas yang
+   dikirim ke mana pun sebelum Anda menekan simpan, dan tidak ada
+   pustaka luar yang diunduh.
+
+   CATATAN TENTANG SHAPEFILE. Shapefile bukan satu berkas melainkan
+   sekumpulan: .shp berisi geometri, .dbf berisi atribut (nama
+   petak, pemilik), .prj berisi sistem koordinat. Aplikasi ini
+   meminta Anda memilih ketiganya sekaligus — bukan file .zip —
+   karena membongkar zip di peramban menuntut kemampuan yang belum
+   ada di sebagian ponsel Android lama, dan kegagalannya sulit
+   dijelaskan kepada pengguna di lapangan.
+   ============================================================ */
+
+function bukaImporBerkas() {
+  /* Tidak memanggil modalTutup di sini: modalBuka sudah menutup modal
+     lama sendiri dan memakai ulang langkah riwayatnya. Menutup lebih
+     dulu justru membuat popstate menyusul dan menutup modal ini. */
+  var html =
+    '<p style="font-size:.85rem;color:var(--redup)">Pilih berkas dari perangkat Anda. ' +
+    'Berkas diurai di ponsel ini — tidak dikirim ke mana pun sebelum Anda menekan ' +
+    'simpan.</p>' +
+
+    '<div class="tumpuk">' +
+    '<button class="tbl lebar" onclick="pilihBerkasImpor(\'geojson\')">' +
+    '🗂️ GeoJSON (.geojson / .json)</button>' +
+    '<button class="tbl lebar" onclick="pilihBerkasImpor(\'kml\')">' +
+    '🌍 KML (.kml)</button>' +
+    '<button class="tbl lebar" onclick="pilihBerkasImpor(\'shp\')">' +
+    '📐 Shapefile (.shp + .dbf + .prj)</button>' +
+    '</div>' +
+
+    '<hr class="pisah">' +
+    '<div class="spanduk biru"><span>📐</span><span><b>Cara memilih shapefile</b>' +
+    'Pilih <b>ketiga berkas sekaligus</b> di kotak pemilih: <code>.shp</code>, ' +
+    '<code>.dbf</code>, dan <code>.prj</code>. Tanpa <code>.prj</code>, sistem ' +
+    'koordinatnya tidak dapat dipastikan dan aplikasi akan menganggapnya WGS84 ' +
+    'derajat — bila ternyata UTM, seluruh petak akan jatuh di tempat yang keliru.' +
+    '</span></div>' +
+
+    '<div class="spanduk kuning"><span>ℹ️</span><span><b>Yang dibaca</b>' +
+    'Hanya geometri poligon. Titik dan garis dilewati. Untuk shapefile, nama petak ' +
+    'diambil dari kolom DBF bernama NAMA, NAME, LABEL, atau ID bila ada.</span></div>' +
+
+    '<div id="hasilImpor"></div>';
+
+  modalBuka('Impor batas petak', html);
+}
+
+function pilihBerkasImpor(jenis) {
+  var input = document.createElement('input');
+  input.type = 'file';
+  if (jenis === 'shp') {
+    input.accept = '.shp,.dbf,.prj,.cpg';
+    input.setAttribute('multiple', 'multiple');
+  } else if (jenis === 'kml') {
+    input.accept = '.kml,.xml';
+  } else {
+    input.accept = '.geojson,.json,application/geo+json,application/json';
+  }
+
+  input.onchange = function () {
+    var berkas = [];
+    for (var i = 0; i < (input.files ? input.files.length : 0); i++) {
+      berkas.push(input.files[i]);
+    }
+    if (!berkas.length) return;
+    tandaiImpor('<div class="spanduk biru"><span class="muat"></span>' +
+                '<span>Membaca berkas…</span></div>');
+    if (jenis === 'shp') bacaShapefile(berkas);
+    else if (jenis === 'kml') bacaTeks(berkas[0], uraiKml);
+    else bacaTeks(berkas[0], uraiGeojsonTeks);
+  };
+  input.click();
+}
+
+function tandaiImpor(html) {
+  var el = $('hasilImpor');
+  if (el) el.innerHTML = html;
+}
+
+function galatImpor(pesan, saran) {
+  tandaiImpor('<div class="spanduk merah"><span>⚠️</span><span><b>' + esc(pesan) +
+    '</b>' + esc(saran || '') + '</span></div>');
+}
+
+function bacaTeks(berkas, penerus) {
+  var pembaca = new FileReader();
+  pembaca.onload = function () {
+    try { penerus(String(pembaca.result), berkas.name); }
+    catch (e) { galatImpor('Berkas gagal dibaca', e.message); }
+  };
+  pembaca.onerror = function () { galatImpor('Berkas gagal dibaca', ''); };
+  pembaca.readAsText(berkas);
+}
+
+/* ============================================================
+   GEOJSON
+   ============================================================ */
+
+function uraiGeojsonTeks(teks, nama) {
+  var gj;
+  try { gj = JSON.parse(teks); }
+  catch (e) {
+    galatImpor('Bukan GeoJSON yang sah',
+      'Berkas tidak dapat dibaca sebagai JSON. Pastikan yang dipilih memang berkas ' +
+      'GeoJSON, bukan berkas lain yang berakhiran .json.');
+    return;
+  }
+  var fitur = gj.type === 'FeatureCollection' ? (gj.features || [])
+    : (gj.type === 'Feature' ? [gj] : [{ type: 'Feature', geometry: gj, properties: {} }]);
+  tampilkanHasilImpor(kumpulkanPoligon(fitur), nama, 'GeoJSON');
+}
+
+/**
+ * Mengambil cincin luar setiap poligon dan membalik urutannya menjadi
+ * [lintang, bujur]. GeoJSON menyimpan [bujur, lintang] — tertukar adalah
+ * kesalahan paling sering pada impor peta, dan akibatnya seluruh kebun
+ * pindah ke tengah samudra tanpa satu pun pesan galat.
+ */
+function kumpulkanPoligon(fitur) {
+  var hasil = [];
+  var dilewati = 0;
+
+  for (var i = 0; i < fitur.length; i++) {
+    var f = fitur[i] || {};
+    var g = f.geometry;
+    if (!g) { dilewati++; continue; }
+    var kumpulan = [];
+
+    if (g.type === 'Polygon') kumpulan.push(g.coordinates);
+    else if (g.type === 'MultiPolygon') {
+      for (var m = 0; m < (g.coordinates || []).length; m++) {
+        kumpulan.push(g.coordinates[m]);
+      }
+    } else { dilewati++; continue; }
+
+    for (var k = 0; k < kumpulan.length; k++) {
+      var cincin = (kumpulan[k] || [])[0];
+      if (!cincin || cincin.length < 4) { dilewati++; continue; }
+      var titik = [];
+      for (var t = 0; t < cincin.length; t++) {
+        var c = cincin[t];
+        if (!c || c.length < 2) continue;
+        titik.push([Number(c[1]), Number(c[0])]);
+      }
+      /* Cincin GeoJSON selalu tertutup — titik terakhir sama dengan yang
+         pertama. Duplikatnya dibuang supaya luas tidak terhitung ganda. */
+      if (titik.length > 1 &&
+          titik[0][0] === titik[titik.length - 1][0] &&
+          titik[0][1] === titik[titik.length - 1][1]) {
+        titik.pop();
+      }
+      if (titik.length < 3) { dilewati++; continue; }
+      hasil.push({ titik: titik, sifat: f.properties || {} });
+    }
+  }
+  return { poligon: hasil, dilewati: dilewati };
+}
+
+/* ============================================================
+   KML
+   ============================================================ */
+
+function uraiKml(teks, nama) {
+  var dok;
+  try {
+    dok = new DOMParser().parseFromString(teks, 'text/xml');
+  } catch (e) {
+    galatImpor('KML tidak dapat dibaca', e.message);
+    return;
+  }
+  if (dok.getElementsByTagName('parsererror').length) {
+    galatImpor('KML rusak atau bukan berkas XML',
+      'Bila berkas Anda berakhiran .kmz, buka dulu sebagai zip lalu ambil berkas ' +
+      '.kml di dalamnya.');
+    return;
+  }
+
+  var tempat = dok.getElementsByTagName('Placemark');
+  var hasil = [], dilewati = 0;
+
+  for (var i = 0; i < tempat.length; i++) {
+    var p = tempat[i];
+    var nm = ambilTeksTag(p, 'name');
+    var poligon = p.getElementsByTagName('Polygon');
+    if (!poligon.length) { dilewati++; continue; }
+
+    for (var j = 0; j < poligon.length; j++) {
+      /* outerBoundaryIs saja — lubang di dalam poligon (innerBoundaryIs)
+         diabaikan, karena petak kebun dengan lubang di tengah tidak dapat
+         diwakili oleh model data aplikasi ini. */
+      var luar = poligon[j].getElementsByTagName('outerBoundaryIs');
+      var sumber = luar.length ? luar[0] : poligon[j];
+      var koordEl = sumber.getElementsByTagName('coordinates');
+      if (!koordEl.length) { dilewati++; continue; }
+
+      var titik = uraiKoordinatKml(koordEl[0].textContent);
+      if (titik.length < 3) { dilewati++; continue; }
+      hasil.push({ titik: titik, sifat: { nama: nm } });
+    }
+  }
+  tampilkanHasilImpor({ poligon: hasil, dilewati: dilewati }, nama, 'KML');
+}
+
+function ambilTeksTag(induk, tag) {
+  var el = induk.getElementsByTagName(tag);
+  return el.length ? String(el[0].textContent || '').trim() : '';
+}
+
+/** KML menulis "bujur,lintang[,tinggi]" dipisah spasi atau baris baru. */
+function uraiKoordinatKml(teks) {
+  var bagian = String(teks || '').trim().split(/\s+/);
+  var titik = [];
+  for (var i = 0; i < bagian.length; i++) {
+    if (!bagian[i]) continue;
+    var c = bagian[i].split(',');
+    if (c.length < 2) continue;
+    var lng = Number(c[0]), lat = Number(c[1]);
+    if (isNaN(lat) || isNaN(lng)) continue;
+    titik.push([lat, lng]);
+  }
+  if (titik.length > 1 &&
+      titik[0][0] === titik[titik.length - 1][0] &&
+      titik[0][1] === titik[titik.length - 1][1]) {
+    titik.pop();
+  }
+  return titik;
+}
+
+/* ============================================================
+   SHAPEFILE
+   ============================================================ */
+
+function bacaShapefile(berkas) {
+  var shp = null, dbf = null, prj = null;
+  for (var i = 0; i < berkas.length; i++) {
+    var n = String(berkas[i].name || '').toLowerCase();
+    if (/\.shp$/.test(n)) shp = berkas[i];
+    else if (/\.dbf$/.test(n)) dbf = berkas[i];
+    else if (/\.prj$/.test(n)) prj = berkas[i];
+  }
+
+  if (!shp) {
+    galatImpor('Berkas .shp tidak ada',
+      'Pilih berkas .shp beserta .dbf dan .prj sekaligus dalam satu kali pemilihan.');
+    return;
+  }
+
+  var tugas = [bacaBiner(shp)];
+  tugas.push(dbf ? bacaBiner(dbf) : Promise.resolve(null));
+  tugas.push(prj ? bacaTeksJanji(prj) : Promise.resolve(null));
+
+  Promise.all(tugas).then(function (hasil) {
+    var proyeksi = uraiPrj(hasil[2]);
+    var geometri;
+    try { geometri = uraiShp(hasil[0], proyeksi); }
+    catch (e) { galatImpor('Berkas .shp tidak dapat dibaca', e.message); return; }
+
+    var atribut = null;
+    if (hasil[1]) {
+      try { atribut = uraiDbf(hasil[1]); }
+      catch (e) { atribut = null; }
+    }
+    if (atribut) {
+      for (var i = 0; i < geometri.poligon.length; i++) {
+        var idx = geometri.poligon[i].indeksFitur;
+        if (atribut[idx]) geometri.poligon[i].sifat = atribut[idx];
+      }
+    }
+
+    var catatan = [];
+    if (!prj) {
+      catatan.push({ jenis: 'peringatan',
+        teks: 'Berkas .prj tidak disertakan. Koordinat dianggap WGS84 derajat. ' +
+              'Bila data Anda sebenarnya UTM, seluruh petak akan jatuh di tempat ' +
+              'yang keliru — periksa letaknya di peta pratinjau.' });
+    } else if (proyeksi.jenis === 'utm') {
+      catatan.push({ jenis: 'info',
+        teks: 'Sistem koordinat terbaca: UTM zona ' + proyeksi.zona +
+              (proyeksi.selatan ? 'S' : 'N') + '. Koordinat dikonversi ke ' +
+              'lintang-bujur.' });
+    } else if (proyeksi.jenis === 'tidak-dikenal') {
+      catatan.push({ jenis: 'peringatan',
+        teks: 'Sistem koordinat pada .prj tidak dikenali. Koordinat dipakai apa ' +
+              'adanya. Periksa letak petak di peta pratinjau sebelum menyimpan.' });
+    }
+    if (!dbf) {
+      catatan.push({ jenis: 'info',
+        teks: 'Berkas .dbf tidak disertakan, jadi nama petak diberi nomor urut.' });
+    }
+
+    tampilkanHasilImpor(geometri, shp.name, 'Shapefile', catatan);
+  }).catch(function (e) {
+    galatImpor('Berkas gagal dibaca', e.message || '');
+  });
+}
+
+function bacaBiner(berkas) {
+  return new Promise(function (selesai, gagal) {
+    var r = new FileReader();
+    r.onload = function () { selesai(new DataView(r.result)); };
+    r.onerror = function () { gagal(new Error('Gagal membaca ' + berkas.name)); };
+    r.readAsArrayBuffer(berkas);
+  });
+}
+
+function bacaTeksJanji(berkas) {
+  return new Promise(function (selesai) {
+    var r = new FileReader();
+    r.onload = function () { selesai(String(r.result)); };
+    r.onerror = function () { selesai(null); };
+    r.readAsText(berkas);
+  });
+}
+
+/**
+ * Membaca geometri poligon dari berkas .shp.
+ *
+ * Bentuk berkasnya: kepala 100 bita, lalu deretan catatan. Angka pada
+ * kepala berurutan big-endian, sedangkan isi catatannya little-endian —
+ * campuran yang aneh, tetapi begitulah bakunya sejak 1998.
+ */
+function uraiShp(dv, proyeksi) {
+  if (dv.byteLength < 100) throw new Error('Berkas terlalu pendek.');
+  var kodeAjaib = dv.getInt32(0, false);
+  if (kodeAjaib !== 9994) {
+    throw new Error('Bukan berkas shapefile (penanda berkas tidak cocok).');
+  }
+  var jenisBerkas = dv.getInt32(32, true);
+  /* 5 = Polygon, 15 = PolygonZ, 25 = PolygonM. Sisanya bukan poligon. */
+  if ([5, 15, 25].indexOf(jenisBerkas) < 0) {
+    throw new Error('Berkas ini berisi jenis geometri ' + jenisBerkas +
+                    ', bukan poligon. Hanya poligon yang dapat menjadi petak.');
+  }
+
+  var hasil = [], dilewati = 0;
+  var posisi = 100;
+  var indeksFitur = 0;
+
+  while (posisi + 8 <= dv.byteLength) {
+    var panjangKata = dv.getInt32(posisi + 4, false);   // dalam kata 16-bit
+    var isiMulai = posisi + 8;
+    var isiPanjang = panjangKata * 2;
+    if (isiMulai + isiPanjang > dv.byteLength) break;
+
+    var jenis = dv.getInt32(isiMulai, true);
+    if (jenis === 5 || jenis === 15 || jenis === 25) {
+      var nBagian = dv.getInt32(isiMulai + 36, true);
+      var nTitik = dv.getInt32(isiMulai + 40, true);
+      var awalBagian = [];
+      for (var b = 0; b < nBagian; b++) {
+        awalBagian.push(dv.getInt32(isiMulai + 44 + b * 4, true));
+      }
+      var mulaiTitik = isiMulai + 44 + nBagian * 4;
+
+      for (var p = 0; p < nBagian; p++) {
+        var dari = awalBagian[p];
+        var sampai = (p + 1 < nBagian) ? awalBagian[p + 1] : nTitik;
+        var titik = [];
+        for (var t = dari; t < sampai; t++) {
+          var x = dv.getFloat64(mulaiTitik + t * 16, true);
+          var y = dv.getFloat64(mulaiTitik + t * 16 + 8, true);
+          var ll = keLintangBujur(x, y, proyeksi);
+          titik.push(ll);
+        }
+        if (titik.length > 1 &&
+            titik[0][0] === titik[titik.length - 1][0] &&
+            titik[0][1] === titik[titik.length - 1][1]) {
+          titik.pop();
+        }
+        /* Hanya cincin luar yang diambil. Pada shapefile, cincin lubang
+           ditulis berlawanan arah jarum jam; membedakannya butuh
+           perhitungan arah, dan petak berlubang tidak didukung model
+           data aplikasi ini. Cincin pertama tiap catatan sudah cukup. */
+        if (p === 0 && titik.length >= 3) {
+          hasil.push({ titik: titik, sifat: {}, indeksFitur: indeksFitur });
+        } else if (titik.length < 3) {
+          dilewati++;
+        }
+      }
+      indeksFitur++;
+    } else {
+      dilewati++;
+      indeksFitur++;
+    }
+    posisi = isiMulai + isiPanjang;
+  }
+
+  return { poligon: hasil, dilewati: dilewati };
+}
+
+/**
+ * Membaca .prj untuk mengetahui sistem koordinatnya.
+ * Yang dikenali: WGS84 geografis dan UTM. Selebihnya ditandai tidak
+ * dikenal, dan koordinatnya dipakai apa adanya — dengan peringatan.
+ */
+function uraiPrj(teks) {
+  if (!teks) return { jenis: 'derajat' };
+  var t = String(teks).toUpperCase();
+
+  if (t.indexOf('PROJCS') < 0) return { jenis: 'derajat' };
+
+  if (t.indexOf('UTM') >= 0 || t.indexOf('TRANSVERSE_MERCATOR') >= 0) {
+    var zona = 0, selatan = false;
+    var cocokZona = t.match(/UTM[_ ]ZONE[_ ](\d+)([NS])?/);
+    if (cocokZona) {
+      zona = Number(cocokZona[1]);
+      selatan = cocokZona[2] === 'S';
+    }
+    /* Bila nama zonanya tidak terbaca, meridian pusat dipakai untuk
+       menghitungnya: zona = (meridian + 183) / 6. */
+    if (!zona) {
+      var mp = t.match(/CENTRAL_MERIDIAN["\s,\]]*[,\s]*(-?[\d.]+)/);
+      if (mp) zona = Math.round((Number(mp[1]) + 183) / 6);
+    }
+    var fn = t.match(/FALSE_NORTHING["\s,\]]*[,\s]*(-?[\d.]+)/);
+    if (fn && Number(fn[1]) > 0) selatan = true;
+    if (zona >= 1 && zona <= 60) {
+      return { jenis: 'utm', zona: zona, selatan: selatan };
+    }
+  }
+  return { jenis: 'tidak-dikenal' };
+}
+
+function keLintangBujur(x, y, proyeksi) {
+  if (!proyeksi || proyeksi.jenis === 'derajat' || proyeksi.jenis === 'tidak-dikenal') {
+    /* Sudah lintang-bujur: .shp menyimpan (x, y) = (bujur, lintang). */
+    return [y, x];
+  }
+  if (proyeksi.jenis === 'utm') return utmKeLintangBujur(x, y, proyeksi);
+  return [y, x];
+}
+
+/**
+ * UTM (WGS84) ke lintang-bujur. Rumus baku Snyder; ketelitiannya jauh
+ * di bawah satu meter pada wilayah Indonesia — lebih dari cukup untuk
+ * batas kebun, yang ketidakpastiannya sendiri beberapa meter.
+ */
+function utmKeLintangBujur(easting, northing, proyeksi) {
+  var a = 6378137.0;
+  var f = 1 / 298.257223563;
+  var k0 = 0.9996;
+  var e2 = f * (2 - f);
+  var e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
+
+  var x = easting - 500000.0;
+  var y = proyeksi.selatan ? northing - 10000000.0 : northing;
+
+  var M = y / k0;
+  var mu = M / (a * (1 - e2 / 4 - 3 * e2 * e2 / 64 - 5 * e2 * e2 * e2 / 256));
+
+  var phi1 = mu +
+    (3 * e1 / 2 - 27 * Math.pow(e1, 3) / 32) * Math.sin(2 * mu) +
+    (21 * e1 * e1 / 16 - 55 * Math.pow(e1, 4) / 32) * Math.sin(4 * mu) +
+    (151 * Math.pow(e1, 3) / 96) * Math.sin(6 * mu) +
+    (1097 * Math.pow(e1, 4) / 512) * Math.sin(8 * mu);
+
+  var sin1 = Math.sin(phi1), cos1 = Math.cos(phi1), tan1 = Math.tan(phi1);
+  var ep2 = e2 / (1 - e2);
+  var C1 = ep2 * cos1 * cos1;
+  var T1 = tan1 * tan1;
+  var N1 = a / Math.sqrt(1 - e2 * sin1 * sin1);
+  var R1 = a * (1 - e2) / Math.pow(1 - e2 * sin1 * sin1, 1.5);
+  var D = x / (N1 * k0);
+
+  var lat = phi1 - (N1 * tan1 / R1) * (
+    D * D / 2 -
+    (5 + 3 * T1 + 10 * C1 - 4 * C1 * C1 - 9 * ep2) * Math.pow(D, 4) / 24 +
+    (61 + 90 * T1 + 298 * C1 + 45 * T1 * T1 - 252 * ep2 - 3 * C1 * C1) *
+      Math.pow(D, 6) / 720);
+
+  var lng = (D -
+    (1 + 2 * T1 + C1) * Math.pow(D, 3) / 6 +
+    (5 - 2 * C1 + 28 * T1 - 3 * C1 * C1 + 8 * ep2 + 24 * T1 * T1) *
+      Math.pow(D, 5) / 120) / cos1;
+
+  var lng0 = (proyeksi.zona - 1) * 6 - 180 + 3;
+  return [lat * 180 / Math.PI, lng0 + lng * 180 / Math.PI];
+}
+
+/**
+ * Membaca .dbf sekadar untuk mengambil nama petak. Hanya ruas teks yang
+ * dibaca; angka dan tanggal tidak diperlukan di sini.
+ */
+function uraiDbf(dv) {
+  if (dv.byteLength < 32) return null;
+  var jumlahBaris = dv.getInt32(4, true);
+  var awalData = dv.getInt16(8, true);
+  var panjangBaris = dv.getInt16(10, true);
+
+  var ruas = [];
+  var p = 32;
+  while (p < awalData - 1 && dv.getUint8(p) !== 0x0D) {
+    var nama = '';
+    for (var i = 0; i < 11; i++) {
+      var c = dv.getUint8(p + i);
+      if (c === 0) break;
+      nama += String.fromCharCode(c);
+    }
+    ruas.push({ nama: nama.toUpperCase(),
+                jenis: String.fromCharCode(dv.getUint8(p + 11)),
+                panjang: dv.getUint8(p + 16) });
+    p += 32;
+  }
+  if (!ruas.length) return null;
+
+  var keluar = [];
+  for (var b = 0; b < jumlahBaris; b++) {
+    var baris = awalData + b * panjangBaris;
+    if (baris + panjangBaris > dv.byteLength) break;
+    var geser = baris + 1;   // bita pertama penanda hapus
+    var objek = {};
+    for (var r = 0; r < ruas.length; r++) {
+      var nilai = '';
+      for (var k = 0; k < ruas[r].panjang; k++) {
+        var kar = dv.getUint8(geser + k);
+        if (kar !== 0) nilai += String.fromCharCode(kar);
+      }
+      objek[ruas[r].nama] = nilai.trim();
+      geser += ruas[r].panjang;
+    }
+    keluar.push(objek);
+  }
+  return keluar;
+}
+
+/* ============================================================
+   PRATINJAU & PENYIMPANAN
+   ============================================================ */
+
+var _hasilImpor = null;
+
+function tampilkanHasilImpor(hasil, namaBerkas, jenisBerkas, catatan) {
+  if (!hasil.poligon.length) {
+    galatImpor('Tidak ada poligon yang ditemukan',
+      'Berkas terbaca, tetapi tidak berisi geometri poligon. Titik dan garis tidak ' +
+      'dapat menjadi batas petak.');
+    return;
+  }
+
+  /* Luas dihitung sekarang juga. Poligon yang letaknya keliru — akibat
+     lintang-bujur tertukar atau proyeksi salah — hampir selalu
+     menghasilkan luas yang mustahil, dan itu ketahuan di sini sebelum
+     apa pun tersimpan. */
+  for (var i = 0; i < hasil.poligon.length; i++) {
+    var pg = hasil.poligon[i];
+    pg.luasM2 = luasPoligonM2(pg.titik);
+    pg.nama = namaDariSifat(pg.sifat, i + 1);
+    pg.pilih = true;
+  }
+
+  _hasilImpor = { poligon: hasil.poligon, namaBerkas: namaBerkas,
+                  jenisBerkas: jenisBerkas };
+
+  var mencurigakan = hasil.poligon.filter(function (p) {
+    return !masukAkalDiIndonesia(p.titik[0]) || p.luasM2 > 50000000 || p.luasM2 < 1;
+  });
+
+  var html = '<hr class="pisah">' +
+    '<div class="spanduk hijau"><span>✅</span><span><b>' + hasil.poligon.length +
+    ' poligon terbaca dari ' + esc(jenisBerkas) + '</b>' +
+    esc(namaBerkas) +
+    (hasil.dilewati ? ' · ' + hasil.dilewati + ' bentuk dilewati karena bukan poligon'
+      : '') + '</span></div>';
+
+  for (var c = 0; c < (catatan || []).length; c++) {
+    var n = catatan[c];
+    html += '<div class="spanduk ' + (n.jenis === 'peringatan' ? 'kuning' : 'biru') +
+      '"><span>' + (n.jenis === 'peringatan' ? '⚠️' : 'ℹ️') + '</span><span>' +
+      esc(n.teks) + '</span></div>';
+  }
+
+  if (mencurigakan.length) {
+    html += '<div class="spanduk merah"><span>🧭</span><span>' +
+      '<b>' + mencurigakan.length + ' poligon berada di luar wilayah Indonesia atau ' +
+      'berluas mustahil</b>Ini hampir selalu berarti sistem koordinatnya keliru — ' +
+      'lintang dan bujur tertukar, atau berkas .prj tidak ikut dipilih. Periksa ' +
+      'letaknya sebelum menyimpan.</span></div>';
+  }
+
+  html += '<div class="gulir" style="max-height:300px"><table><thead><tr>' +
+    '<th></th><th>Nama</th><th class="angka">Luas</th><th class="angka">Titik</th>' +
+    '</tr></thead><tbody>';
+  for (var j = 0; j < hasil.poligon.length; j++) {
+    var pj = hasil.poligon[j];
+    var aneh = !masukAkalDiIndonesia(pj.titik[0]) || pj.luasM2 > 50000000;
+    html += '<tr><td><input type="checkbox" style="width:auto;margin:0" checked ' +
+      'onchange="_hasilImpor.poligon[' + j + '].pilih=this.checked"></td>' +
+      '<td>' + esc(pj.nama) + (aneh ? ' <span class="lencana merah">?</span>' : '') +
+      '</td>' +
+      '<td class="angka">' + rp(Math.round(pj.luasM2)) + ' m²<br>' +
+      '<small style="color:var(--redup)">' + (pj.luasM2 / 10000).toFixed(3) +
+      ' ha</small></td>' +
+      '<td class="angka">' + pj.titik.length + '</td></tr>';
+  }
+  html += '</tbody></table></div>' +
+    '<button class="tbl lebar" style="margin-top:8px" onclick="simpanHasilImpor()">' +
+    '✓ Simpan petak terpilih</button>';
+
+  tandaiImpor(html);
+}
+
+function namaDariSifat(sifat, urutan) {
+  var kunci = ['NAMA', 'NAME', 'LABEL', 'NAMOBJ', 'nama', 'name', 'label', 'judul'];
+  for (var i = 0; i < kunci.length; i++) {
+    var v = sifat ? sifat[kunci[i]] : '';
+    if (v && String(v).trim()) return String(v).trim();
+  }
+  return 'Petak impor ' + urutan;
+}
+
+/**
+ * Batas kasar wilayah Indonesia. Dipakai hanya sebagai peringatan,
+ * bukan penolakan — ada pengguna yang sah di luar rentang ini, dan
+ * menolak data mereka lebih merugikan daripada memberi peringatan.
+ */
+function masukAkalDiIndonesia(titik) {
+  if (!titik) return false;
+  return titik[0] > -12 && titik[0] < 7 && titik[1] > 94 && titik[1] < 142;
+}
+
+function simpanHasilImpor() {
+  if (!_hasilImpor) return;
+  var pilih = _hasilImpor.poligon.filter(function (p) { return p.pilih; });
+  if (!pilih.length) { toast('Tidak ada petak yang dicentang.', 'galat'); return; }
+  if (!S.daring) { toast('Impor memerlukan sambungan internet.', 'galat'); return; }
+
+  konfirmasi('Simpan ' + pilih.length + ' petak?',
+    'Luas setiap petak dihitung ulang di peladen dari bentuk poligonnya, bukan ' +
+    'diambil dari berkas. Data lain — komoditas, tanggal tanam — dapat dilengkapi ' +
+    'setelah ini lewat Ubah data petak.',
+    function () {
+      var gj = { type: 'FeatureCollection', features: pilih.map(function (p) {
+        var cincin = p.titik.map(function (t) { return [t[1], t[0]]; });
+        cincin.push(cincin[0]);
+        return { type: 'Feature',
+                 geometry: { type: 'Polygon', coordinates: [cincin] },
+                 properties: { nama: p.nama } };
+      }) };
+
+      tandaiImpor('<div class="spanduk biru"><span class="muat"></span>' +
+                  '<span>Menyimpan ' + pilih.length + ' petak…</span></div>');
+
+      panggil('petak_impor', { geojson: gj }).then(function (r) {
+        toast(r.masuk + ' petak diimpor' +
+              (r.dilewati ? ', ' + r.dilewati + ' dilewati' : '') + '.', 'sukses');
+        _hasilImpor = null;
+        modalTutup();
+        S.petaAktif = null;
+        muatData();
+      }).catch(function (e) {
+        galatImpor('Gagal menyimpan', e.message);
+      });
+    }, 'Simpan');
 }
 
 </script>
