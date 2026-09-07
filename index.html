@@ -1184,6 +1184,53 @@ html[data-mode="gelap"] .spanduk.biru{background:#1B2E3A;border-color:#31566B;co
 html[data-mode="gelap"] .spanduk.hijau{background:#22301F;border-color:#3E5B3A;color:#A9D3A3}
 .spanduk b{display:block}
 
+/* ---- Deretan yang dapat digeser, beserta panah penandanya ----
+   Baris sub-tab dan menu utama sering lebih lebar daripada layar
+   ponsel. Tanpa penanda, isi yang berada di luar layar tidak akan
+   pernah ditemukan: pengguna menyimpulkan menunya rusak, bukan bahwa
+   barisnya perlu digeser. */
+.gulirNav{position:relative}
+.gulirNav>.panahGulir{
+  position:absolute;top:0;bottom:4px;width:30px;padding:0;border:0;
+  display:none;align-items:center;justify-content:center;cursor:pointer;
+  font-size:1.15rem;line-height:1;color:var(--utama);font-family:inherit;
+  z-index:3;
+}
+/* Menu utama menempel dengan z-index 880, jadi panahnya harus lebih
+   tinggi lagi — kalau tidak, ia tergambar di bawah menu dan tidak
+   terlihat sama sekali meski kelasnya sudah benar. */
+.gulirNav.navUtama>.panahGulir{z-index:890}
+
+/* ---- Foto profil ---- */
+#tblProfil.berfoto{padding:0;overflow:hidden}
+#tblProfil.berfoto>img{width:100%;height:100%;object-fit:cover;display:block}
+.fotoProfilBesar{
+  width:104px;height:104px;border-radius:50%;object-fit:cover;
+  border:3px solid var(--utama2);display:inline-block;cursor:zoom-in;
+}
+.fotoProfilBesar.kosongFoto{
+  background:var(--garis);color:var(--utama);cursor:default;
+  display:inline-flex;align-items:center;justify-content:center;
+  font-size:2.1rem;font-weight:800;
+}
+.gulirNav>.panahGulir.kiri{left:0;
+  background:linear-gradient(to right,var(--latar) 55%,transparent)}
+.gulirNav>.panahGulir.kanan{right:0;
+  background:linear-gradient(to left,var(--latar) 55%,transparent)}
+.gulirNav.adaKiri>.panahGulir.kiri{display:flex}
+.gulirNav.adaKanan>.panahGulir.kanan{display:flex}
+/* Di dalam kartu, latar panah mengikuti warna kartunya. */
+.kartu .gulirNav>.panahGulir.kiri{
+  background:linear-gradient(to right,var(--kartu) 55%,transparent)}
+.kartu .gulirNav>.panahGulir.kanan{
+  background:linear-gradient(to left,var(--kartu) 55%,transparent)}
+.gulirNav.navUtama>.panahGulir{bottom:0}
+.gulirNav.navUtama>.panahGulir.kiri{
+  background:linear-gradient(to right,var(--kartu) 60%,transparent)}
+.gulirNav.navUtama>.panahGulir.kanan{
+  background:linear-gradient(to left,var(--kartu) 60%,transparent)}
+@media(pointer:coarse){.gulirNav>.panahGulir{width:34px}}
+
 .pil{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
 .pil::-webkit-scrollbar{display:none}
 .pil button{
@@ -1270,7 +1317,7 @@ html[data-mode="gelap"] .spanduk.hijau{background:#22301F;border-color:#3E5B3A;c
   <div class="kakiFoto">
     <div class="judulFoto" id="galeriJudul"></div>
     <div class="ketFoto" id="galeriKet"></div>
-    <div class="petunjuk">Geser untuk berpindah foto · cubit atau ketuk dua kali untuk memperbesar</div>
+    <div class="petunjuk" id="galeriPetunjuk"></div>
   </div>
 </div>
 <script>
@@ -1296,8 +1343,8 @@ if ('serviceWorker' in navigator) {
 <script>
 
 /* Versi antarmuka. HARUS naik bersama APP_VERSI di Code.gs. */
-var VERSI_KLIEN = '1.8.0';
-var TANGGAL_RILIS_KLIEN = '2026-09-06';
+var VERSI_KLIEN = '1.9.0';
+var TANGGAL_RILIS_KLIEN = '2026-09-08';
 
 /* ============================================================
    TaniPintar — inti aplikasi
@@ -1745,6 +1792,13 @@ function muatData(diam) {
     S.pengaturan = d.pengaturan || {};
     S.lisensi = d.lisensi || null;
     S.database = d.database || {};
+    /* Data diri disegarkan dari peladen supaya perubahan yang dilakukan
+       dari perangkat lain — foto profil, peran, jabatan — ikut terlihat. */
+    if (d.saya) {
+      S.pengguna = d.saya;
+      simpanLokal(LS.pengguna, S.pengguna);
+      if (typeof perbaruiTombolProfil === 'function') perbaruiTombolProfil();
+    }
     S.versiPeladen = d.versiPeladen || '';
     S.tanggalRilis = d.tanggalRilis || '';
     S.siap = true;
@@ -1892,6 +1946,21 @@ function modalBuka(judul, isiHtml, callback, labelTombol) {
   _modalCallback = callback || null;
   if (callback) $('modalSimpan').onclick = modalKirim;
 
+  /* Bila sebuah penutupan masih menunggu popstate-nya — pola
+     modalTutup() lalu langsung modalBuka() — penutupan itu dibatalkan
+     di sini. Tanpa ini, popstate yang menyusul akan menutup modal yang
+     baru saja dibuka, dan gejalanya membingungkan: modal berkedip lalu
+     hilang tanpa satu pun pesan galat.
+
+     Ditangani di sini, bukan diserahkan kepada pemanggilnya, karena
+     urutan itu wajar ditulis dan sudah beberapa kali terlanjur dipakai. */
+  if (_tutupTertunda) {
+    _tutupTertunda = false;
+    _abaikanPopstate = true;
+    _lanjutSetelahRiwayat = null;
+    _modalDiRiwayat = true;
+  }
+
   if (!_modalDiRiwayat) {
     try {
       history.pushState({ tp: 'modal' }, '', location.hash || '');
@@ -1920,6 +1989,10 @@ function tutupModalDom() {
  */
 /* Tindakan yang menunggu langkah riwayat modal selesai ditarik. */
 var _lanjutSetelahRiwayat = null;
+/* Benar antara permintaan tutup dan popstate yang menyusulinya. */
+var _tutupTertunda = false;
+/* Menelan satu popstate: dipakai saat penutupan dibatalkan oleh modal baru. */
+var _abaikanPopstate = false;
 
 function modalTutup() {
   modalTutupLalu(null);
@@ -1942,8 +2015,10 @@ function modalTutupLalu(lanjut) {
   if (_modalDiRiwayat) {
     _modalDiRiwayat = false;
     _lanjutSetelahRiwayat = lanjut || null;
+    _tutupTertunda = true;
     tutupModalDom();
-    try { history.back(); return; } catch (e) { _lanjutSetelahRiwayat = null; }
+    try { history.back(); return; }
+    catch (e) { _lanjutSetelahRiwayat = null; _tutupTertunda = false; }
   }
   tutupModalDom();
   if (lanjut) lanjut();
@@ -1996,7 +2071,11 @@ function bentukRuas(daftar, nilaiAwal) {
     var id = 'f_' + f.k;
 
     if (f.t === 'info') {
-      html += '<div class="spanduk ' + (f.warna || 'biru') + '">' + f.isi + '</div>';
+      /* Diberi id supaya isinya dapat diganti setelah formulir tergambar —
+         misalnya untuk menampilkan hasil analisis komoditas. Tanpa id,
+         penggantinya tidak punya sasaran dan gagal diam-diam. */
+      html += '<div class="spanduk ' + (f.warna || 'biru') + '" id="f_' + f.k + '">' +
+        f.isi + '</div>';
       continue;
     }
     if (f.t === 'aksi') {
@@ -2469,6 +2548,20 @@ function bangunNav() {
             '<span class="ik">' + t.ik + '</span>' + esc(t.n) + '</button>';
   }
   $('nav').innerHTML = html;
+
+  /* Nav utama dibungkus sekali saja, saat pertama kali dibangun. */
+  var nav = $('nav');
+  if (nav && nav.parentNode && !nav.parentNode.classList.contains('gulirNav')) {
+    var bungkus = document.createElement('div');
+    bungkus.className = 'gulirNav navUtama';
+    nav.parentNode.insertBefore(bungkus, nav);
+    bungkus.appendChild(nav);
+    bungkus.insertAdjacentHTML('beforeend',
+      '<button type="button" class="panahGulir kiri" tabindex="-1" aria-hidden="true" ' +
+      'onclick="geserDeret(this,-1)">\u2039</button>' +
+      '<button type="button" class="panahGulir kanan" tabindex="-1" aria-hidden="true" ' +
+      'onclick="geserDeret(this,1)">\u203a</button>');
+  }
 }
 
 function pindah(tab, dariRiwayat) {
@@ -2524,6 +2617,14 @@ function gantiRiwayat() {
  */
 function pasangTombolKembali() {
   window.addEventListener('popstate', function (e) {
+    _tutupTertunda = false;
+
+    /* Penutupan dibatalkan karena modal lain sudah terlanjur dibuka. */
+    if (_abaikanPopstate) {
+      _abaikanPopstate = false;
+      return;
+    }
+
     /* Langkah ini ditarik oleh modalTutupLalu(), bukan oleh pengguna.
        Modal sudah tertutup; yang tersisa hanya menjalankan titipannya. */
     if (_lanjutSetelahRiwayat) {
@@ -2577,13 +2678,90 @@ function pasangTombolKembali() {
 
 function pil(kelompok, daftar, bawaan) {
   var aktif = S.subtab[kelompok] || bawaan;
-  var html = '<div class="pil" style="margin-bottom:12px">';
+  var html = '<div class="pil">';
   for (var i = 0; i < daftar.length; i++) {
     var d = daftar[i];
     html += '<button onclick="subPindah(\'' + kelompok + '\',\'' + d.k + '\')" class="' +
             (aktif === d.k ? 'aktif' : '') + '">' + esc(d.n) + '</button>';
   }
-  return html + '</div>';
+  html += '</div>';
+  /* Baris ini sering lebih lebar daripada layar ponsel. Tanpa penanda,
+     sub-tab yang berada di luar layar tidak akan pernah ditemukan —
+     pengguna menyimpulkan menunya tidak bisa ditekan, bukan bahwa
+     barisnya perlu digeser. */
+  return bungkusGulir(html, 'margin-bottom:12px');
+}
+
+/**
+ * Membungkus deretan yang dapat digeser mendatar, beserta panah penanda
+ * di kedua sisinya. Panah hanya tampil pada sisi yang masih ada isinya,
+ * dan dapat ditekan untuk menggeser.
+ */
+function bungkusGulir(isiHtml, gaya) {
+  return '<div class="gulirNav"' + (gaya ? ' style="' + gaya + '"' : '') + '>' +
+    isiHtml +
+    '<button type="button" class="panahGulir kiri" tabindex="-1" aria-hidden="true" ' +
+    'onclick="geserDeret(this,-1)">‹</button>' +
+    '<button type="button" class="panahGulir kanan" tabindex="-1" aria-hidden="true" ' +
+    'onclick="geserDeret(this,1)">›</button></div>';
+}
+
+/** Menggeser deretan sejauh sekitar tiga perempat lebar yang terlihat. */
+function geserDeret(tombol, arah) {
+  var wadah = tombol.parentNode;
+  var deret = wadah.querySelector('.pil, #nav');
+  if (!deret) return;
+  var langkah = Math.max(120, Math.round(deret.clientWidth * 0.75));
+  if (deret.scrollBy) deret.scrollBy({ left: arah * langkah, behavior: 'smooth' });
+  else deret.scrollLeft += arah * langkah;
+}
+
+/**
+ * Menyalakan atau memadamkan panah sesuai posisi gulir.
+ * Dipanggil setelah setiap penggambaran ulang, dan dipasangi pemantau
+ * agar ikut berubah saat pengguna menggeser sendiri.
+ */
+function perbaruiPetunjukGulir() {
+  var wadah = document.querySelectorAll('.gulirNav');
+  for (var i = 0; i < wadah.length; i++) {
+    (function (w) {
+      var deret = w.querySelector('.pil, #nav');
+      if (!deret) return;
+
+      function segarkan() {
+        /* Toleransi 2 piksel: pembulatan pecahan piksel pada sebagian
+           peramban membuat scrollLeft tidak pernah persis mencapai
+           batasnya, sehingga panah tersangkut menyala terus. */
+        var adaKiri = deret.scrollLeft > 2;
+        var adaKanan = deret.scrollLeft + deret.clientWidth < deret.scrollWidth - 2;
+        w.classList.toggle('adaKiri', adaKiri);
+        w.classList.toggle('adaKanan', adaKanan);
+      }
+
+      if (!w._pantauGulir) {
+        deret.addEventListener('scroll', segarkan, { passive: true });
+        w._pantauGulir = true;
+      }
+      segarkan();
+    })(wadah[i]);
+  }
+}
+
+/**
+ * Menggulir deretan agar tombol yang sedang aktif terlihat.
+ * Tanpa ini, membuka tab yang letaknya jauh di kanan meninggalkan
+ * penandanya di luar layar — pengguna kehilangan petunjuk sedang
+ * berada di mana.
+ */
+function tampakkanTabAktif() {
+  var deret = document.querySelectorAll('.gulirNav .pil, .gulirNav #nav');
+  for (var i = 0; i < deret.length; i++) {
+    var aktif = deret[i].querySelector('button.aktif');
+    if (!aktif) continue;
+    var tengah = aktif.offsetLeft - (deret[i].clientWidth / 2) +
+                 (aktif.offsetWidth / 2);
+    deret[i].scrollLeft = Math.max(0, tengah);
+  }
 }
 
 function subAktif(kelompok, bawaan) {
@@ -2641,6 +2819,14 @@ function render() {
     setTimeout(gambarPetaPokok, 30);
   }
   if (S.tab === 'tanibot') gulirChatKeBawah();
+
+  /* Ditunda satu putaran supaya lebar elemen sudah terhitung peramban;
+     dijalankan sebelum panahnya disegarkan agar posisi gulirnya sudah
+     benar saat diperiksa. */
+  setTimeout(function () {
+    tampakkanTabAktif();
+    perbaruiPetunjukGulir();
+  }, 0);
 }
 
 /**
@@ -2825,20 +3011,92 @@ function perbaruiTombolProfil() {
   var b = $('tblProfil');
   if (!b) return;
   if (S.pengguna) {
-    var pecah = String(S.pengguna.nama || '?').trim().split(/\s+/);
-    var inisial = (pecah[0] || '?').charAt(0) + (pecah.length > 1 ? pecah[1].charAt(0) : '');
-    b.textContent = inisial.toUpperCase();
+    var foto = S.pengguna.fotoUrl;
+    if (foto) {
+      b.innerHTML = '<img src="' + esc(foto) + '" alt="">';
+      b.classList.add('berfoto');
+    } else {
+      b.textContent = inisialNama(S.pengguna.nama);
+      b.classList.remove('berfoto');
+    }
     b.title = S.pengguna.nama + ' — ' + S.pengguna.peran;
     b.onclick = bukaProfil;
   } else {
     b.textContent = 'Masuk';
+    b.classList.remove('berfoto');
     b.onclick = function () { render(); };
   }
+}
+
+/** Membuka foto profil di penampil layar penuh yang sama dengan galeri. */
+function zoomFotoProfil() {
+  var u = S.pengguna || {};
+  if (!u.fotoUrl) return;
+  bukaGaleri([{ fotoUrl: u.fotoUrl, judul: u.nama,
+                catatan: u.peran + (u.jabatan ? ' — ' + u.jabatan : '') }], 0);
+}
+
+function gantiFotoProfil() {
+  if (!S.daring) {
+    toast('Mengganti foto profil memerlukan sambungan internet.', 'galat');
+    return;
+  }
+  var input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.onchange = function () {
+    var berkas = input.files && input.files[0];
+    if (!berkas) return;
+    toast('Memperkecil foto…');
+    /* Foto profil ditampilkan kecil, jadi 640 piksel sudah lebih dari
+       cukup — dan ukuran kecil menjaga muatan sesi tetap ringan. */
+    kecilkanGambar(berkas, 640, function (dataUrl) {
+      panggil('profil_foto', { fotoUrl: dataUrl }).then(function (r) {
+        S.pengguna.fotoUrl = r.fotoUrl;
+        simpanLokal(LS.pengguna, S.pengguna);
+        perbaruiTombolProfil();
+        modalTutupLalu(bukaProfil);
+        toast('Foto profil diperbarui.', 'sukses');
+      }).catch(function (e) { toast(e.message, 'galat'); });
+    });
+  };
+  input.click();
+}
+
+function hapusFotoProfil() {
+  konfirmasi('Hapus foto profil?', 'Tombol profil kembali menampilkan inisial nama.',
+    function () {
+      panggil('profil_foto', { hapus: true }).then(function () {
+        S.pengguna.fotoUrl = '';
+        simpanLokal(LS.pengguna, S.pengguna);
+        perbaruiTombolProfil();
+        modalTutupLalu(bukaProfil);
+        toast('Foto profil dihapus.', 'sukses');
+      }).catch(function (e) { toast(e.message, 'galat'); });
+    }, 'Hapus', true);
+}
+
+function inisialNama(nama) {
+  var pecah = String(nama || '?').trim().split(/\s+/);
+  var i = (pecah[0] || '?').charAt(0) + (pecah.length > 1 ? pecah[1].charAt(0) : '');
+  return i.toUpperCase();
 }
 
 function bukaProfil() {
   var u = S.pengguna || {};
   modalBuka('Profil & Akun',
+    '<div style="text-align:center;margin-bottom:12px">' +
+    (u.fotoUrl
+      ? '<img src="' + esc(u.fotoUrl) + '" class="fotoProfilBesar" alt="Foto profil" ' +
+        'onclick="zoomFotoProfil()" title="Ketuk untuk memperbesar">'
+      : '<div class="fotoProfilBesar kosongFoto">' + esc(inisialNama(u.nama)) + '</div>') +
+    '<div class="baris" style="justify-content:center;margin-top:8px">' +
+    '<button class="tbl sekunder kecil" onclick="gantiFotoProfil()">' +
+    (u.fotoUrl ? '🔄 Ganti foto' : '📷 Tambah foto') + '</button>' +
+    (u.fotoUrl
+      ? '<button class="tbl sekunder kecil" onclick="hapusFotoProfil()">Hapus foto</button>'
+      : '') +
+    '</div></div>' +
     '<div class="item"><div class="ikon">👤</div><div class="isi">' +
     '<b>' + esc(u.nama) + '</b><small>' + esc(u.email) + '</small>' +
     '<small>Peran: <b>' + esc(u.peran) + '</b>' + (u.jabatan ? ' — ' + esc(u.jabatan) : '') +
@@ -7395,21 +7653,51 @@ function formPengguna(id) {
 
 function formKomoditas(id) {
   var k = id ? cariById('komoditas', id) : null;
-  var awal = k ? JSON.parse(JSON.stringify(k)) : { siklusHari: 90, hasilPerM2: 1 };
+  var awal = k ? JSON.parse(JSON.stringify(k)) : { siklusHari: '', hasilPerM2: '' };
   if (Array.isArray(awal.varietas)) awal.varietas = awal.varietas.join(', ');
   if (Array.isArray(awal.hamaUmum)) awal.hamaUmum = awal.hamaUmum.join(', ');
   if (Array.isArray(awal.kebutuhanPupuk)) awal.kebutuhanPupuk = awal.kebutuhanPupuk.join(', ');
 
+  var kategoriBaku = ['Sayuran', 'Buah', 'Palawija', 'Padi', 'Perkebunan', 'Rempah',
+                      'Tanaman Obat', 'Kehutanan'];
+  var kategoriLain = awal.kategori && kategoriBaku.indexOf(awal.kategori) < 0;
+
   var ruas = [
-    { k: 'nama', n: 'Nama komoditas', t: 'teks', wajib: true },
+    { k: 'nama', n: 'Nama komoditas', t: 'teks', wajib: true,
+      contoh: 'mis. Manggis, Porang, Sereh Wangi' },
     { k: 'kategori', n: 'Kategori', t: 'pilih',
-      opsi: ['Sayuran', 'Buah', 'Palawija', 'Padi', 'Perkebunan', 'Rempah'] },
-    { k: 'ikon', n: 'Ikon (emoji)', t: 'teks', contoh: '🌶️' },
-    { k: 'varietas', n: 'Varietas umum', t: 'teks', help: 'Pisahkan dengan koma.' },
-    { k: 'siklusHari', n: 'Siklus tanam-panen (hari)', t: 'angka', wajib: true },
+      opsi: kategoriBaku.concat([{ v: '__lain', l: 'Lainnya — ketik sendiri' }]),
+      bawaan: kategoriLain ? '__lain' : (awal.kategori || 'Sayuran'),
+      onchange: 'ubahKategoriKomoditas()' },
+    { k: 'kategoriLain', n: 'Tulis kategorinya', t: 'teks',
+      bawaan: kategoriLain ? awal.kategori : '',
+      contoh: 'mis. Tanaman Hias, Biofarmaka',
+      help: 'Terisi hanya bila kategori di atas dipilih "Lainnya".' },
+    { k: 'x_ai', t: 'aksi', label: '🔬 Analisis komoditas ini',
+      aksi: 'analisisKomoditas()' },
+    { k: 'x_hasil', t: 'info', warna: 'biru',
+      isi: '<span>💡</span><span>Untuk komoditas yang tidak ada di daftar bawaan, ' +
+        'tekan tombol di atas. Aplikasi menentukan apakah ini tanaman tahunan atau ' +
+        'semusim, lalu memperkirakan berapa lama sampai panen pertama — dan selalu ' +
+        'menyebutkan dari mana angkanya berasal.</span>' },
+    { k: 'tahunan', n: 'Jenis tanaman', t: 'pilih',
+      opsi: [{ v: '', l: '— belum ditentukan —' },
+             { v: 'ya', l: 'Tahunan — ditanam sekali, dipanen bertahun-tahun' },
+             { v: 'tidak', l: 'Semusim — dibongkar setelah panen, ditanam ulang' }],
+      bawaan: awal.tahunan || '',
+      help: 'Menentukan apakah komoditas ini boleh dicatat per pokok.' },
+    { k: 'siklusHari', n: 'Hari sampai panen pertama', t: 'angka', wajib: true,
+      help: 'Dihitung sejak tanam. Untuk sawit sekitar 1.095 hari, cabai sekitar 90.' },
+    { k: 'panenBerulangHari', n: 'Selang antarpanen (hari)', t: 'angka',
+      bawaan: awal.panenBerulangHari,
+      help: 'Kosong atau 0 berarti sekali panen lalu dibongkar.' },
+    { k: 'musimPanen', n: 'Musim panen', t: 'teks', bawaan: awal.musimPanen,
+      contoh: 'mis. Desember-Maret, atau sepanjang tahun' },
     { k: 'hasilPerM2', n: 'Perkiraan hasil (kg/m²)', t: 'angka', langkah: '0.01',
       help: 'Hanya dipakai untuk petak yang belum punya riwayat panen.' },
     { k: 'hargaPerKg', n: 'Harga acuan (Rp/kg)', t: 'angka' },
+    { k: 'ikon', n: 'Ikon (emoji)', t: 'teks', contoh: '🌶️' },
+    { k: 'varietas', n: 'Varietas umum', t: 'teks', help: 'Pisahkan dengan koma.' },
     { k: 'phMin', n: 'pH minimum', t: 'angka', langkah: '0.1' },
     { k: 'phMax', n: 'pH maksimum', t: 'angka', langkah: '0.1' },
     { k: 'kebutuhanPupuk', n: 'Kebutuhan pupuk', t: 'teks', help: 'Pisahkan dengan koma.' },
@@ -7419,16 +7707,139 @@ function formKomoditas(id) {
   modalBuka(k ? 'Ubah komoditas' : 'Komoditas baru', bentukRuas(ruas, awal), function () {
     var v = kumpulkanRuas();
     if (!v.nama) { toast('Nama komoditas wajib diisi.', 'galat'); return false; }
+
+    var kategori = v.kategori === '__lain' ? String(v.kategoriLain || '').trim()
+                                           : v.kategori;
+    if (v.kategori === '__lain' && !kategori) {
+      toast('Tulis nama kategorinya.', 'galat');
+      return false;
+    }
+    if (!angka(v.siklusHari)) {
+      toast('Hari sampai panen pertama wajib diisi. Tekan Analisis bila belum tahu.',
+            'galat');
+      return false;
+    }
+
     ['varietas', 'kebutuhanPupuk', 'hamaUmum'].forEach(function (n) {
       v[n] = String(v[n] || '').split(',').map(function (x) { return x.trim(); })
         .filter(function (x) { return x; });
     });
+
     var item = k ? JSON.parse(JSON.stringify(k)) : {};
-    for (var n2 in v) item[n2] = v[n2];
+    for (var n2 in v) {
+      if (n2 === 'kategoriLain' || n2.indexOf('x_') === 0) continue;
+      item[n2] = v[n2];
+    }
+    item.kategori = kategori;
+    item.panenPertamaHari = angka(v.siklusHari);
+    if (_analisisKomoditas) {
+      item.sumberAnalisis = _analisisKomoditas.sumber;
+      item.catatanAnalisis = _analisisKomoditas.catatan;
+    }
+
     ubah('komoditas_simpan', { item: item }, { pesan: 'Komoditas disimpan.' })
       .catch(function (e) { toast(e.message, 'galat'); });
+    _analisisKomoditas = null;
     return true;
   });
+
+  setTimeout(ubahKategoriKomoditas, 60);
+}
+
+/** Kolom kategori bebas hanya ditampilkan bila "Lainnya" dipilih. */
+function ubahKategoriKomoditas() {
+  var pilih = $('f_kategori');
+  var baris = $('f_kategoriLain');
+  if (!pilih || !baris) return;
+  var induk = baris.closest ? baris.closest('label.ruas') : null;
+  var lain = pilih.value === '__lain';
+  if (induk) induk.style.display = lain ? '' : 'none';
+  if (lain) setTimeout(function () { baris.focus(); }, 30);
+}
+
+var _analisisKomoditas = null;
+
+/**
+ * Meminta analisis untuk komoditas yang diketik sendiri.
+ * Hasilnya mengisi ruas, tetapi TIDAK menguncinya — pengguna tetap
+ * dapat menimpanya dengan angka dari pengalaman setempat, yang hampir
+ * selalu lebih dapat dipercaya daripada perkiraan umum.
+ */
+function analisisKomoditas() {
+  var nama = ($('f_nama') || {}).value;
+  if (!nama || !String(nama).trim()) {
+    toast('Isi nama komoditas terlebih dahulu.', 'galat');
+    return;
+  }
+  if (!S.daring) {
+    toast('Analisis memerlukan sambungan internet.', 'galat');
+    return;
+  }
+
+  var kategori = ($('f_kategori') || {}).value;
+  if (kategori === '__lain') kategori = ($('f_kategoriLain') || {}).value;
+
+  var kotak = $('f_help_x_hasil') || null;
+  tandaiAnalisis('<span class="muat"></span><span>Menganalisis "' + esc(nama) +
+                 '"…</span>');
+
+  panggil('ai_komoditas', { nama: nama, kategori: kategori }).then(function (r) {
+    _analisisKomoditas = r;
+
+    if (r.tahunan && $('f_tahunan')) $('f_tahunan').value = r.tahunan;
+    if (angka(r.panenPertamaHari) && $('f_siklusHari')) {
+      $('f_siklusHari').value = angka(r.panenPertamaHari);
+    }
+    if ($('f_panenBerulangHari') && r.panenBerulangHari !== '') {
+      $('f_panenBerulangHari').value = angka(r.panenBerulangHari);
+    }
+    if (r.musimPanen && $('f_musimPanen')) $('f_musimPanen').value = r.musimPanen;
+    if (angka(r.hasilPerM2) && $('f_hasilPerM2')) {
+      $('f_hasilPerM2').value = angka(r.hasilPerM2);
+    }
+
+    var sumber = r.sumber === 'gemini' ? 'analisis AI'
+      : (r.sumber === 'gemini-dikoreksi' ? 'analisis AI, dikoreksi basis bawaan'
+        : (r.sumber === 'basis-bawaan' ? 'basis pengetahuan bawaan aplikasi'
+          : 'tidak dikenali'));
+
+    if (!r.dikenali || r.sumber === 'tidak-dikenali') {
+      tandaiAnalisis('<span>❓</span><span><b>Komoditas ini tidak dikenali</b>' +
+        esc(r.catatan) + '</span>', 'kuning');
+      return;
+    }
+
+    var ringkas = r.tahunan === 'ya'
+      ? 'Tanaman <b>tahunan</b> — dapat dicatat per pokok.'
+      : 'Tanaman <b>semusim</b> — dicatat di tingkat petak saja.';
+    var panen = 'Panen pertama sekitar <b>' + rp(angka(r.panenPertamaHari)) +
+      ' hari</b> setelah tanam' +
+      (angka(r.panenPertamaHari) >= 365
+        ? ' (± ' + (angka(r.panenPertamaHari) / 365).toFixed(1).replace('.', ',') +
+          ' tahun)'
+        : '') + '.';
+    var ulang = angka(r.panenBerulangHari) > 0
+      ? ' Panen berikutnya tiap <b>' + angka(r.panenBerulangHari) + ' hari</b>.'
+      : ' Sekali panen, lalu dibongkar.';
+
+    tandaiAnalisis('<span>🔬</span><span><b>Hasil analisis — sumber: ' +
+      esc(sumber) + '</b>' + ringkas + ' ' + panen + ulang +
+      (r.musimPanen ? ' Musim panen: ' + esc(r.musimPanen) + '.' : '') +
+      '<br><br>' + esc(r.catatan) +
+      '<br><br><i>Angka di bawah sudah terisi. Ubahlah bila petani setempat punya ' +
+      'angka yang lebih tepat — pengalaman lapangan lebih dapat dipercaya daripada ' +
+      'perkiraan umum.</i></span>',
+      r.sumber === 'gemini' ? 'hijau' : 'kuning');
+  }).catch(function (e) {
+    tandaiAnalisis('<span>⚠️</span><span>' + esc(e.message) + '</span>', 'merah');
+  });
+}
+
+function tandaiAnalisis(isi, warna) {
+  var el = $('f_x_hasil');
+  if (!el) return;
+  el.className = 'spanduk ' + (warna || 'biru');
+  el.innerHTML = isi;
 }
 
 /* ============================================================
@@ -8832,6 +9243,14 @@ function bagianVersi() {
      daftar perubahan kode. Pengguna perlu tahu apa yang berubah bagi
      dirinya, bukan nama fungsi yang diperbaiki. */
   html += '<div class="kartu"><h3>Riwayat perubahan</h3>' +
+    catatanVersi('1.9.0', '8 September 2026', [
+      'Perbaikan: sub-tab yang berada di luar layar tidak dapat ditekan — kini ada ' +
+        'panah penanda pada menu yang bisa digeser',
+      'Perbaikan: hasil analisis komoditas tidak pernah tergambar di layar',
+      'Kategori komoditas dapat diketik sendiri, dengan analisis tahunan atau ' +
+        'semusim beserta perkiraan panen sejak tanam',
+      'Foto profil pengguna, dapat diperbesar'
+    ]) +
     catatanVersi('1.8.0', '6 September 2026', [
       'Tiga cara menambah petak: ketuk batas di peta, ukur keliling dengan GPS, ' +
         'atau impor berkas',
@@ -9546,7 +9965,7 @@ function gambarLaporan(L) {
   html += bagianKategoriBiaya(L.kini.kategoriBiaya, t.biaya);
 
   /* Panen per komoditas */
-  html += bagianKomoditas(L.kini.komoditas);
+  html += bagianKomoditasLaporan(L.kini.komoditas);
 
   /* Kegiatan lapangan */
   html += bagianKegiatan(L.kini);
@@ -9726,8 +10145,13 @@ function bagianKategoriBiaya(kategori, totalBiaya) {
   return html + '</div>';
 }
 
-/* ---------- komoditas ---------- */
-function bagianKomoditas(komoditas) {
+/* ---------- komoditas ----------
+   Nama fungsi diberi akhiran Laporan supaya tidak bentrok dengan
+   bagianKomoditas() di 09-tab-e.js. Seluruh berkas parts/ dirakit ke
+   satu ruang nama, jadi nama yang sama akan saling menimpa diam-diam —
+   yang terakhir dimuat menang, dan yang kalah berhenti bekerja tanpa
+   satu pun pesan galat sampai fungsinya dipanggil. */
+function bagianKomoditasLaporan(komoditas) {
   if (!komoditas.length) return '';
   var html = '<div class="kartu"><h3>Panen per komoditas</h3>' +
     '<div class="gulir"><table><thead><tr><th>Komoditas</th>' +
@@ -10228,6 +10652,16 @@ function galeriTerbuka() {
 }
 
 function gambarGaleri() {
+  /* Petunjuk menyesuaikan jumlah foto. Menyuruh "geser untuk berpindah
+     foto" pada galeri berisi satu foto hanya membuat pengguna mencoba
+     sesuatu yang memang tidak ada. */
+  var pet = $('galeriPetunjuk');
+  if (pet) {
+    pet.textContent = (_galeri.daftar.length > 1)
+      ? 'Geser untuk berpindah foto · cubit atau ketuk dua kali untuk memperbesar'
+      : 'Cubit atau ketuk dua kali untuk memperbesar';
+  }
+
   var f = _galeri.daftar[_galeri.indeks];
   if (!f) return;
 
