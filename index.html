@@ -952,10 +952,63 @@ td.angka,th.angka{text-align:right;font-variant-numeric:tabular-nums;white-space
   .leaflet-control-zoom a{width:38px;height:38px;line-height:38px;font-size:1.2rem}
 }
 html[data-mode="gelap"] .leaflet-container{background:#1E2419}
+/* Label petak: teks gelap berhalo putih, tanpa kotak latar.
+   Kotak latar menutupi citra satelit di bawahnya justru pada bagian
+   tengah petak — tempat yang paling ingin dilihat. Halo membuat teks
+   tetap terbaca di atas latar terang maupun gelap. */
 .petaLabel{
-  background:rgba(255,255,255,.9);border:1px solid var(--utama2);border-radius:6px;
-  padding:1px 5px;font-size:.66rem;font-weight:800;color:#2C3327;white-space:nowrap;
+  font-size:.72rem;font-weight:800;color:#1E2A1B;white-space:nowrap;
+  text-shadow:
+    -1.5px -1.5px 0 #fff,  1.5px -1.5px 0 #fff,
+    -1.5px  1.5px 0 #fff,  1.5px  1.5px 0 #fff,
+    -1.5px 0 0 #fff, 1.5px 0 0 #fff, 0 -1.5px 0 #fff, 0 1.5px 0 #fff,
+    0 0 3px #fff;
+  /* -webkit-text-stroke tidak dipakai: ia menipiskan huruf dari dalam,
+     sehingga teks kecil justru jadi lebih sulit dibaca. */
+  pointer-events:none;
+  /* Penanda dibuat berukuran nol agar tepat di titik pusat petak, jadi
+     labelnya perlu digeser sendiri separuh lebarnya supaya terpusat —
+     tanpa ini teks selalu melenceng ke kanan. */
+  display:inline-block;transform:translateX(-50%);
 }
+html[data-mode="silau"] .petaLabel{font-size:.8rem}
+
+/* ---- Kendali tambahan di atas peta ---- */
+.kendaliPeta{
+  position:absolute;z-index:600;display:flex;flex-direction:column;gap:6px;
+}
+.kendaliPeta.kanan{right:10px;top:10px}
+.kendaliPeta.kananBawah{right:10px;bottom:22px}
+.kendaliPeta button{
+  width:38px;height:38px;padding:0;border:1px solid var(--garis);border-radius:10px;
+  background:var(--kartu);color:var(--tinta);font-size:1.05rem;line-height:1;
+  cursor:pointer;font-family:inherit;box-shadow:0 1px 4px rgba(0,0,0,.18);
+  display:flex;align-items:center;justify-content:center;
+}
+.kendaliPeta button:hover{border-color:var(--utama2)}
+.kendaliPeta button.aktif{background:var(--utama);color:#fff;border-color:var(--utama)}
+@media(pointer:coarse){.kendaliPeta button{width:42px;height:42px;font-size:1.15rem}}
+
+.pilihPetakPeta{
+  /* Digeser ke kanan agar tidak menimpa tombol perbesar/perkecil bawaan
+     Leaflet yang menempati sudut kiri atas. */
+  position:absolute;z-index:600;left:52px;top:10px;max-width:min(52%,230px);
+}
+.pilihPetakPeta select{
+  width:100%;padding:8px 10px;border-radius:10px;border:1px solid var(--garis);
+  background:var(--kartu);font-size:.76rem;font-weight:700;font-family:inherit;
+  color:var(--tinta);box-shadow:0 1px 4px rgba(0,0,0,.18);
+}
+
+/* Layar penuh. Memakai kelas sendiri, bukan hanya Fullscreen API:
+   sebagian WebView Android menolak requestFullscreen tanpa pesan galat,
+   dan tanpa cadangan ini tombolnya tampak rusak. */
+.petaPenuh{
+  position:fixed !important;inset:0 !important;z-index:4000 !important;
+  width:100% !important;height:100% !important;max-height:none !important;
+  border-radius:0 !important;margin:0 !important;
+}
+body.adaPetaPenuh #atas,body.adaPetaPenuh .gulirNav.navUtama{display:none}
 .kisiPeta{background:repeating-linear-gradient(0deg,#CFDCC9 0 1px,transparent 1px 40px),
   repeating-linear-gradient(90deg,#CFDCC9 0 1px,transparent 1px 40px),#E3EBDE}
 .chipPeta{
@@ -1201,9 +1254,43 @@ html[data-mode="gelap"] .spanduk.hijau{background:#22301F;border-color:#3E5B3A;c
    terlihat sama sekali meski kelasnya sudah benar. */
 .gulirNav.navUtama>.panahGulir{z-index:890}
 
+/* ---- Pemilih ikon komoditas ---- */
+.pratinjauIkon{
+  display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:8px;
+  background:var(--latar);border:1px solid var(--garis);border-radius:11px;
+}
+.pratinjauIkon .besar{font-size:2rem;line-height:1}
+.pratinjauIkon .ket{font-size:.78rem;color:var(--redup)}
+.judulIkon{font-size:.72rem;font-weight:700;color:var(--redup);
+  margin:9px 0 4px;text-transform:uppercase;letter-spacing:.3px}
+.kisiIkon{display:grid;grid-template-columns:repeat(8,1fr);gap:5px}
+@media(max-width:360px){.kisiIkon{grid-template-columns:repeat(6,1fr)}}
+@media(min-width:640px){.kisiIkon{grid-template-columns:repeat(12,1fr)}}
+button.tombolIkon{
+  aspect-ratio:1;border:1px solid var(--garis);border-radius:9px;
+  background:var(--kartu);font-size:1.15rem;line-height:1;padding:0;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;font-family:inherit;
+}
+button.tombolIkon:hover{border-color:var(--utama2)}
+button.tombolIkon.terpilih{
+  background:var(--utama);border-color:var(--utama);
+  box-shadow:0 0 0 2px var(--utama2) inset;
+}
+@media(pointer:coarse){
+  /* Sasaran sentuh diperbesar: ikon 30px terlalu kecil untuk ibu jari. */
+  button.tombolIkon{font-size:1.3rem}
+}
+
 /* ---- Foto profil ---- */
-#tblProfil.berfoto{padding:0;overflow:hidden}
+/* Ukuran dikunci. Tanpa ini, tombol tidak punya ukuran sendiri dan
+   gambar melebar ke ukuran aslinya — memenuhi separuh layar. */
+#tblProfil{width:36px;height:36px;padding:0;flex:0 0 auto;
+  display:flex;align-items:center;justify-content:center;font-size:.74rem}
+#tblProfil.berfoto{border-radius:50%;overflow:hidden;
+  border:2px solid rgba(255,255,255,.55)}
 #tblProfil.berfoto>img{width:100%;height:100%;object-fit:cover;display:block}
+/* Sebelum masuk, tombolnya bertuliskan "Masuk" dan perlu lebih lebar. */
+#tblProfil:not(.berfoto):not(.inisial){width:auto;padding:7px 10px}
 .fotoProfilBesar{
   width:104px;height:104px;border-radius:50%;object-fit:cover;
   border:3px solid var(--utama2);display:inline-block;cursor:zoom-in;
@@ -1343,8 +1430,8 @@ if ('serviceWorker' in navigator) {
 <script>
 
 /* Versi antarmuka. HARUS naik bersama APP_VERSI di Code.gs. */
-var VERSI_KLIEN = '1.9.0';
-var TANGGAL_RILIS_KLIEN = '2026-09-08';
+var VERSI_KLIEN = '1.10.0';
+var TANGGAL_RILIS_KLIEN = '2026-09-09';
 
 /* ============================================================
    TaniPintar — inti aplikasi
@@ -2109,6 +2196,8 @@ function bentukRuas(daftar, nilaiAwal) {
       html += '<span class="baris"><input type="checkbox" id="' + id + '" ' +
               'style="width:auto;margin:0" ' + (v === true || v === 'true' ? 'checked' : '') +
               '> <span style="font-size:.84rem">' + esc(f.keterangan || 'Ya') + '</span></span>';
+    } else if (f.t === 'ikon') {
+      html += bentukPemilihIkon(id, f.k, v);
     } else if (f.t === 'warna') {
       /* Input color HTML tidak punya keadaan "kosong" — nilainya selalu
          sebuah warna. Nilai sebenarnya disimpan di input tersembunyi,
@@ -2296,6 +2385,133 @@ function pasangKosongkanMenyeluruh() {
   });
 }
 
+/* ============================================================
+   PEMILIH IKON KOMODITAS
+   ============================================================
+   Emoji dipakai, bukan berkas gambar: ia sudah tersedia di setiap
+   perangkat, tidak menambah ukuran aplikasi, tidak perlu diunduh saat
+   luring, dan tidak membawa kewajiban lisensi seperti kebanyakan
+   kumpulan ikon.
+
+   Kekurangannya nyata dan perlu dinyatakan: bentuk emoji berbeda
+   antarperangkat, dan sebagian tidak ada di Android lama sehingga
+   tampil sebagai kotak kosong.
+   ============================================================ */
+
+var IKON_KOMODITAS = [
+  { n: 'Padi & palawija',
+    d: ['🌾', '🌽', '🥔', '🍠', '🥜', '🫘', '🌱', '🎋'] },
+  { n: 'Sayuran',
+    d: ['🌶️', '🍅', '🥬', '🥒', '🧅', '🧄', '🥕', '🥦', '🍆', '🎃', '🫑', '🍄'] },
+  { n: 'Buah',
+    d: ['🍌', '🥭', '🍍', '🍉', '🍈', '🍊', '🍋', '🍓', '🍇', '🥑', '🥥', '🍎',
+        '🍐', '🍑', '🍒', '🫐'] },
+  { n: 'Perkebunan',
+    d: ['🌴', '☕', '🍫', '🍵', '🌿', '🎍', '🪵', '🧵'] },
+  { n: 'Rempah & obat',
+    d: ['🫚', '🌰', '🍯', '🪴', '🌺', '🌻', '🌷', '🪷'] },
+  { n: 'Kehutanan & lain',
+    d: ['🌳', '🌲', '🎄', '🍂', '🐟', '🐄', '🐐', '🐔', '🐝', '🦐'] }
+];
+
+/**
+ * Saran ikon dari nama komoditas. Dipakai hanya bila pengguna belum
+ * memilih apa pun — menimpa pilihan orang dengan tebakan adalah
+ * gangguan, bukan bantuan.
+ */
+var SARAN_IKON = [
+  { kata: ['sawit'], ikon: '🌴' }, { kata: ['kelapa'], ikon: '🥥' },
+  { kata: ['kopi'], ikon: '☕' }, { kata: ['kakao', 'coklat', 'cokelat'], ikon: '🍫' },
+  { kata: ['teh'], ikon: '🍵' }, { kata: ['karet'], ikon: '🪵' },
+  { kata: ['padi', 'gabah', 'beras'], ikon: '🌾' }, { kata: ['jagung'], ikon: '🌽' },
+  { kata: ['kedelai', 'kacang'], ikon: '🥜' }, { kata: ['singkong', 'ubi'], ikon: '🍠' },
+  { kata: ['kentang'], ikon: '🥔' }, { kata: ['porang', 'talas'], ikon: '🪴' },
+  { kata: ['cabai', 'cabe'], ikon: '🌶️' }, { kata: ['tomat'], ikon: '🍅' },
+  { kata: ['bawang'], ikon: '🧅' }, { kata: ['sawi', 'kubis', 'kol'], ikon: '🥬' },
+  { kata: ['timun', 'mentimun'], ikon: '🥒' }, { kata: ['wortel'], ikon: '🥕' },
+  { kata: ['terong', 'terung'], ikon: '🍆' }, { kata: ['labu'], ikon: '🎃' },
+  { kata: ['jamur'], ikon: '🍄' }, { kata: ['pisang'], ikon: '🍌' },
+  { kata: ['mangga', 'durian'], ikon: '🥭' }, { kata: ['nanas'], ikon: '🍍' },
+  { kata: ['semangka'], ikon: '🍉' }, { kata: ['melon'], ikon: '🍈' },
+  { kata: ['jeruk'], ikon: '🍊' }, { kata: ['lemon', 'nipis'], ikon: '🍋' },
+  { kata: ['stroberi', 'strawberry'], ikon: '🍓' }, { kata: ['anggur'], ikon: '🍇' },
+  { kata: ['alpukat', 'avokad'], ikon: '🥑' }, { kata: ['apel'], ikon: '🍎' },
+  { kata: ['jahe', 'kunyit', 'lengkuas', 'temulawak'], ikon: '🫚' },
+  { kata: ['madu', 'lebah'], ikon: '🐝' }, { kata: ['ikan', 'lele', 'nila'], ikon: '🐟' },
+  { kata: ['udang'], ikon: '🦐' }, { kata: ['sapi'], ikon: '🐄' },
+  { kata: ['kambing'], ikon: '🐐' }, { kata: ['ayam'], ikon: '🐔' },
+  { kata: ['sengon', 'jati', 'mahoni'], ikon: '🌳' }, { kata: ['bambu'], ikon: '🎋' }
+];
+
+function saranIkonDariNama(nama) {
+  var t = String(nama || '').toLowerCase();
+  if (!t) return '';
+  for (var i = 0; i < SARAN_IKON.length; i++) {
+    for (var j = 0; j < SARAN_IKON[i].kata.length; j++) {
+      if (t.indexOf(SARAN_IKON[i].kata[j]) >= 0) return SARAN_IKON[i].ikon;
+    }
+  }
+  return '';
+}
+
+function bentukPemilihIkon(id, kunci, nilai) {
+  var html = '<input type="hidden" id="' + id + '" value="' + esc(nilai) + '">' +
+    '<div class="pratinjauIkon" id="ikonPratinjau_' + kunci + '">' +
+    '<span class="besar">' + esc(nilai || '🌱') + '</span>' +
+    '<span class="ket">' + (nilai ? 'Ikon terpilih' : 'Belum dipilih') + '</span>' +
+    '</div>';
+
+  for (var g = 0; g < IKON_KOMODITAS.length; g++) {
+    html += '<div class="judulIkon">' + esc(IKON_KOMODITAS[g].n) + '</div>' +
+      '<div class="kisiIkon">';
+    for (var i = 0; i < IKON_KOMODITAS[g].d.length; i++) {
+      var e = IKON_KOMODITAS[g].d[i];
+      html += '<button type="button" class="tombolIkon' +
+        (e === nilai ? ' terpilih' : '') + '" ' +
+        'onclick="pilihIkon(\'' + kunci + '\',\'' + e + '\')" ' +
+        'aria-label="Pilih ikon ' + esc(e) + '">' + e + '</button>';
+    }
+    html += '</div>';
+  }
+
+  /* Kotak ketik bebas tetap disediakan: daftar di atas tidak mungkin
+     memuat semua komoditas, dan pengguna yang komoditasnya tidak
+     terwakili tidak boleh kehilangan pilihan. */
+  html += '<div class="judulIkon">Atau tempel emoji lain</div>' +
+    '<div class="baris">' +
+    '<input type="text" id="ikonBebas_' + kunci + '" maxlength="4" ' +
+    'style="flex:0 0 74px;text-align:center;font-size:1.2rem" ' +
+    'placeholder="🌱" value="' + esc(nilai) + '" ' +
+    'oninput="pilihIkon(\'' + kunci + '\', this.value, true)">' +
+    '<button type="button" class="tbl sekunder kecil" ' +
+    'onclick="pilihIkon(\'' + kunci + '\',\'\')">Kosongkan</button></div>' +
+    '<div class="bantu">Bentuk emoji berbeda-beda antarperangkat, dan sebagian ' +
+    'tidak ada di Android lama sehingga tampil sebagai kotak kosong. Bila ragu, ' +
+    'pilih dari daftar di atas.</div>';
+  return html;
+}
+
+function pilihIkon(kunci, emoji, dariKetikan) {
+  var el = $('f_' + kunci);
+  if (el) el.value = emoji;
+
+  var bebas = $('ikonBebas_' + kunci);
+  if (bebas && !dariKetikan) bebas.value = emoji;
+
+  var pratinjau = $('ikonPratinjau_' + kunci);
+  if (pratinjau) {
+    pratinjau.querySelector('.besar').textContent = emoji || '🌱';
+    pratinjau.querySelector('.ket').textContent = emoji ? 'Ikon terpilih'
+                                                        : 'Belum dipilih';
+  }
+
+  var tombol = document.querySelectorAll('.tombolIkon');
+  for (var i = 0; i < tombol.length; i++) {
+    if (tombol[i].textContent === emoji) tombol[i].classList.add('terpilih');
+    else tombol[i].classList.remove('terpilih');
+  }
+}
+
 function setWarnaRuas(kunci, nilai) {
   var teks = $('f_' + kunci);
   var pilih = $('f_' + kunci + '_pilih');
@@ -2326,13 +2542,8 @@ function kumpulkanRuas() {
 
 /* ---------- pengambilan & pengecilan foto ---------- */
 function ambilFoto(kunci, pakaiKamera) {
-  var input = document.createElement('input');
-  input.type = 'file';
-  input.accept = 'image/*';
-  if (pakaiKamera) input.setAttribute('capture', 'environment');
-  input.onchange = function () {
-    var berkas = input.files && input.files[0];
-    if (!berkas) return;
+  bukaPemilihBerkas({ kamera: pakaiKamera }, function (berkasTerpilih) {
+    var berkas = berkasTerpilih[0];
     kecilkanGambar(berkas, 1280, function (dataUrl) {
       var el = $('f_' + kunci);
       if (el) el.value = dataUrl;
@@ -2341,7 +2552,60 @@ function ambilFoto(kunci, pakaiKamera) {
                                '" onclick="zoomFoto(this.src)">';
       toast('Foto siap (' + Math.round(dataUrl.length / 1024) + ' KB).');
     });
+  });
+}
+
+/**
+ * Membuka pemilih berkas.
+ *
+ * Elemen input WAJIB ditempelkan ke halaman sebelum diklik. Pada
+ * peramban meja, input yang lepas dari DOM tetap membuka pemilih —
+ * tetapi pada WebView Android lama dan Safari iOS, klik pada elemen
+ * yang tidak ada di halaman tidak melakukan apa pun sama sekali, tanpa
+ * satu pun pesan galat. Gejalanya: tombol ditekan, tidak terjadi apa-apa.
+ *
+ * Elemen dibuang setelah dipakai supaya tidak menumpuk.
+ */
+function bukaPemilihBerkas(opsi, saatPilih) {
+  var input = document.createElement('input');
+  input.type = 'file';
+  input.accept = opsi.accept || 'image/*';
+  if (opsi.banyak) input.setAttribute('multiple', 'multiple');
+  if (opsi.kamera) input.setAttribute('capture', 'environment');
+
+  /* Disembunyikan dari pandangan, tetapi tetap berada di halaman —
+     display:none pada sebagian peramban ikut melumpuhkan kliknya. */
+  input.style.position = 'fixed';
+  input.style.left = '-9999px';
+  input.style.top = '0';
+  input.style.opacity = '0';
+  document.body.appendChild(input);
+
+  var sudahDibuang = false;
+  function buang() {
+    if (sudahDibuang) return;
+    sudahDibuang = true;
+    if (input.parentNode) input.parentNode.removeChild(input);
+  }
+
+  input.onchange = function () {
+    var berkas = [];
+    for (var i = 0; i < (input.files ? input.files.length : 0); i++) {
+      berkas.push(input.files[i]);
+    }
+    /* Dibuang setelah berkasnya diambil: sebagian peramban melepaskan
+       acuan berkas begitu elemennya dihapus. */
+    setTimeout(buang, 0);
+    if (berkas.length) saatPilih(berkas);
   };
+
+  /* Bila pengguna membatalkan, onchange tidak pernah terpanggil.
+     Elemen dibersihkan saat halaman kembali mendapat sorotan. */
+  window.addEventListener('focus', function bersihkan() {
+    window.removeEventListener('focus', bersihkan);
+    setTimeout(buang, 800);
+  });
+
   input.click();
 }
 
@@ -2358,19 +2622,7 @@ var _fotoBanyak = {};
  * beberapa detik tanpa satu pun tanda bahwa aplikasinya masih hidup.
  */
 function ambilFotoBanyak(kunci, pakaiKamera) {
-  var input = document.createElement('input');
-  input.type = 'file';
-  input.accept = 'image/*';
-  if (pakaiKamera) input.setAttribute('capture', 'environment');
-  else input.setAttribute('multiple', 'multiple');
-
-  input.onchange = function () {
-    var berkas = [];
-    for (var i = 0; i < (input.files ? input.files.length : 0); i++) {
-      berkas.push(input.files[i]);
-    }
-    if (!berkas.length) return;
-
+  bukaPemilihBerkas({ kamera: pakaiKamera, banyak: !pakaiKamera }, function (berkas) {
     if (!_fotoBanyak[kunci]) _fotoBanyak[kunci] = [];
     var maksSekali = 20;
     if (berkas.length > maksSekali) {
@@ -2399,8 +2651,7 @@ function ambilFotoBanyak(kunci, pakaiKamera) {
       });
     }
     berikutnya();
-  };
-  input.click();
+  });
 }
 
 function tandaiProsesFoto(kunci, selesai, total) {
@@ -2618,6 +2869,14 @@ function gantiRiwayat() {
 function pasangTombolKembali() {
   window.addEventListener('popstate', function (e) {
     _tutupTertunda = false;
+
+    /* Layar penuh ditutup lebih dulu. Bila tidak, tombol Kembali akan
+       memindahkan tab sementara petanya masih menutupi seluruh layar. */
+    if (typeof adaPetaPenuh === 'function' && adaPetaPenuh()) {
+      keluarPetaPenuh();
+      dorongRiwayat();
+      return;
+    }
 
     /* Penutupan dibatalkan karena modal lain sudah terlanjur dibuka. */
     if (_abaikanPopstate) {
@@ -3015,15 +3274,18 @@ function perbaruiTombolProfil() {
     if (foto) {
       b.innerHTML = '<img src="' + esc(foto) + '" alt="">';
       b.classList.add('berfoto');
+      b.classList.remove('inisial');
     } else {
       b.textContent = inisialNama(S.pengguna.nama);
       b.classList.remove('berfoto');
+      b.classList.add('inisial');
     }
     b.title = S.pengguna.nama + ' — ' + S.pengguna.peran;
     b.onclick = bukaProfil;
   } else {
     b.textContent = 'Masuk';
     b.classList.remove('berfoto');
+    b.classList.remove('inisial');
     b.onclick = function () { render(); };
   }
 }
@@ -3041,12 +3303,8 @@ function gantiFotoProfil() {
     toast('Mengganti foto profil memerlukan sambungan internet.', 'galat');
     return;
   }
-  var input = document.createElement('input');
-  input.type = 'file';
-  input.accept = 'image/*';
-  input.onchange = function () {
-    var berkas = input.files && input.files[0];
-    if (!berkas) return;
+  bukaPemilihBerkas({}, function (berkasTerpilih) {
+    var berkas = berkasTerpilih[0];
     toast('Memperkecil foto…');
     /* Foto profil ditampilkan kecil, jadi 640 piksel sudah lebih dari
        cukup — dan ukuran kecil menjaga muatan sesi tetap ringan. */
@@ -3059,8 +3317,7 @@ function gantiFotoProfil() {
         toast('Foto profil diperbarui.', 'sukses');
       }).catch(function (e) { toast(e.message, 'galat'); });
     });
-  };
-  input.click();
+  });
 }
 
 function hapusFotoProfil() {
@@ -3375,6 +3632,7 @@ function gambarPeta(idElemen) {
   });
 
   _petaSiap = true;
+  pasangKendaliPeta(idElemen, {});
   setTimeout(function () { if (_peta) _peta.invalidateSize(); }, 120);
 }
 
@@ -4123,35 +4381,10 @@ function unduhBerkas(nama, isi, tipe) {
   }
 }
 
-function imporGeojson() {
-  var input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.geojson,.json,application/geo+json,application/json';
-  input.onchange = function () {
-    var berkas = input.files && input.files[0];
-    if (!berkas) return;
-    var pembaca = new FileReader();
-    pembaca.onload = function () {
-      var gj;
-      try { gj = JSON.parse(pembaca.result); }
-      catch (e) { toast('Berkas bukan GeoJSON yang sah.', 'galat'); return; }
-      var jumlah = (gj.features || []).length;
-      if (!jumlah) { toast('Berkas tidak berisi fitur.', 'galat'); return; }
-      konfirmasi('Impor ' + jumlah + ' fitur?',
-        'Setiap poligon akan menjadi petak baru. Luasnya dihitung ulang dari geometri, ' +
-        'bukan dari atribut berkas.',
-        function () {
-          if (!S.daring) { toast('Impor memerlukan sambungan internet.', 'galat'); return; }
-          panggil('petak_impor', { geojson: gj }).then(function (r) {
-            toast(r.masuk + ' petak diimpor, ' + r.dilewati + ' dilewati.', 'sukses');
-            muatData();
-          }).catch(function (e) { toast(e.message, 'galat'); });
-        }, 'Impor');
-    };
-    pembaca.readAsText(berkas);
-  };
-  input.click();
-}
+/* imporGeojson lama dibuang — digantikan bukaImporBerkas() di 17-impor.js,
+   yang juga menerima SHP dan KML serta memakai pemilih berkas yang
+   ditempelkan ke DOM. */
+
 
 /* ============================================================
    TAB: KALENDER PANEN
@@ -7696,7 +7929,9 @@ function formKomoditas(id) {
     { k: 'hasilPerM2', n: 'Perkiraan hasil (kg/m²)', t: 'angka', langkah: '0.01',
       help: 'Hanya dipakai untuk petak yang belum punya riwayat panen.' },
     { k: 'hargaPerKg', n: 'Harga acuan (Rp/kg)', t: 'angka' },
-    { k: 'ikon', n: 'Ikon (emoji)', t: 'teks', contoh: '🌶️' },
+    { k: 'ikon', n: 'Ikon komoditas', t: 'ikon',
+      help: 'Dipakai pada daftar, peta, dan laporan agar komoditas mudah dibedakan ' +
+            'sekilas.' },
     { k: 'varietas', n: 'Varietas umum', t: 'teks', help: 'Pisahkan dengan koma.' },
     { k: 'phMin', n: 'pH minimum', t: 'angka', langkah: '0.1' },
     { k: 'phMax', n: 'pH maksimum', t: 'angka', langkah: '0.1' },
@@ -7782,6 +8017,15 @@ function analisisKomoditas() {
   var kotak = $('f_help_x_hasil') || null;
   tandaiAnalisis('<span class="muat"></span><span>Menganalisis "' + esc(nama) +
                  '"…</span>');
+
+  /* Ikon ikut disarankan dari nama komoditasnya, tetapi hanya bila
+     pengguna belum memilih apa pun — menimpa pilihan orang dengan
+     tebakan adalah gangguan, bukan bantuan. */
+  var ikonKini = $('f_ikon') ? $('f_ikon').value : '';
+  if (!ikonKini) {
+    var saran = saranIkonDariNama(nama);
+    if (saran) pilihIkon('ikon', saran);
+  }
 
   panggil('ai_komoditas', { nama: nama, kategori: kategori }).then(function (r) {
     _analisisKomoditas = r;
@@ -8430,6 +8674,12 @@ function gambarPetaPokok() {
 
   try {
     _petaPokok = L.map('petaPokok', { center: pusat, zoom: 17, maxZoom: 22, zoomSnap: 0.5 });
+    /* Pemilih petak tidak dipasang di sini: petak dipilih lewat dropdown
+       di atas tab Pokok, dan dua pemilih untuk hal yang sama akan
+       membingungkan. */
+    setTimeout(function () {
+      pasangKendaliPeta('petaPokok', { pilihPetak: false, tanpaSemua: true });
+    }, 60);
   } catch (e) { return; }
 
   var ubin = urlUbin();
@@ -9243,6 +9493,18 @@ function bagianVersi() {
      daftar perubahan kode. Pengguna perlu tahu apa yang berubah bagi
      dirinya, bukan nama fungsi yang diperbaiki. */
   html += '<div class="kartu"><h3>Riwayat perubahan</h3>' +
+    catatanVersi('1.10.0', '9 September 2026', [
+      'Perbaikan: mengambil dan mengunggah foto tidak berfungsi di sebagian ponsel',
+      'Perbaikan: foto profil di header terlalu besar dan tidak bisa dihapus',
+      'Tombol lokasi GPS, layar penuh, dan pemilih petak di peta',
+      'Layar penuh juga tersedia pada peta pokok',
+      'Label petak kini berhalo putih tanpa kotak latar, agar citra di bawahnya ' +
+        'tetap terlihat'
+    ]) +
+    catatanVersi('1.9.1', '8 September 2026', [
+      'Ikon komoditas dipilih dari daftar bergambar, tidak lagi diketik manual',
+      'Ikon disarankan otomatis dari nama komoditas saat analisis dijalankan'
+    ]) +
     catatanVersi('1.9.0', '8 September 2026', [
       'Perbaikan: sub-tab yang berada di luar layar tidak dapat ditekan — kini ada ' +
         'panah penanda pada menu yang bisa digeser',
@@ -11615,30 +11877,18 @@ function bukaImporBerkas() {
 }
 
 function pilihBerkasImpor(jenis) {
-  var input = document.createElement('input');
-  input.type = 'file';
-  if (jenis === 'shp') {
-    input.accept = '.shp,.dbf,.prj,.cpg';
-    input.setAttribute('multiple', 'multiple');
-  } else if (jenis === 'kml') {
-    input.accept = '.kml,.xml';
-  } else {
-    input.accept = '.geojson,.json,application/geo+json,application/json';
-  }
+  var opsi = { banyak: jenis === 'shp' };
+  if (jenis === 'shp') opsi.accept = '.shp,.dbf,.prj,.cpg';
+  else if (jenis === 'kml') opsi.accept = '.kml,.xml';
+  else opsi.accept = '.geojson,.json,application/geo+json,application/json';
 
-  input.onchange = function () {
-    var berkas = [];
-    for (var i = 0; i < (input.files ? input.files.length : 0); i++) {
-      berkas.push(input.files[i]);
-    }
-    if (!berkas.length) return;
+  bukaPemilihBerkas(opsi, function (berkas) {
     tandaiImpor('<div class="spanduk biru"><span class="muat"></span>' +
                 '<span>Membaca berkas…</span></div>');
     if (jenis === 'shp') bacaShapefile(berkas);
     else if (jenis === 'kml') bacaTeks(berkas[0], uraiKml);
     else bacaTeks(berkas[0], uraiGeojsonTeks);
-  };
-  input.click();
+  });
 }
 
 function tandaiImpor(html) {
@@ -12221,6 +12471,281 @@ function simpanHasilImpor() {
       });
     }, 'Simpan');
 }
+
+
+/* ============================================================
+   KENDALI TAMBAHAN DI ATAS PETA
+   ============================================================
+   Tiga kendali yang dipakai di lapangan, pada peta kebun maupun
+   peta pokok:
+
+   1. Tombol lokasi GPS — memusatkan peta ke posisi Anda sekarang
+   2. Pemilih petak      — melompat ke petak tertentu
+   3. Layar penuh        — memakai seluruh layar ponsel
+
+   Dibuat sebagai elemen HTML biasa di atas peta, bukan L.Control,
+   supaya gayanya mengikuti aplikasi dan tetap terbaca pada mode
+   silau yang dipakai di bawah matahari.
+   ============================================================ */
+
+var _lokasiSaya = { penanda: null, lingkaran: null, pantau: null, peta: null };
+
+/**
+ * Menempelkan kendali ke sebuah wadah peta.
+ * Dipanggil setelah peta selesai dibuat.
+ */
+function pasangKendaliPeta(idWadah, opsi) {
+  opsi = opsi || {};
+  var wadah = $(idWadah);
+  if (!wadah) return;
+
+  /* Wadah peta perlu position:relative agar kendali dapat ditempatkan
+     di atasnya. Leaflet tidak menyetelnya sendiri. */
+  if (getComputedStyle(wadah).position === 'static') {
+    wadah.style.position = 'relative';
+  }
+
+  /* Kendali lama dibuang lebih dulu: peta digambar ulang berkali-kali,
+     dan tanpa ini tombolnya menumpuk berlapis-lapis. */
+  var lama = wadah.querySelectorAll('.kendaliPeta, .pilihPetakPeta');
+  for (var i = 0; i < lama.length; i++) lama[i].parentNode.removeChild(lama[i]);
+
+  var kendali = document.createElement('div');
+  kendali.className = 'kendaliPeta kanan';
+  kendali.innerHTML =
+    '<button type="button" title="Layar penuh" aria-label="Layar penuh" ' +
+    'onclick="petaLayarPenuh(\'' + idWadah + '\')">⛶</button>' +
+    '<button type="button" id="tblLokasi_' + idWadah + '" ' +
+    'title="Lokasi saya" aria-label="Lokasi saya" ' +
+    'onclick="lokasiSaya(\'' + idWadah + '\')">📍</button>' +
+    (opsi.tanpaSemua ? ''
+      : '<button type="button" title="Lihat semua petak" ' +
+        'aria-label="Lihat semua petak" ' +
+        'onclick="zoomSemuaPetak(\'' + idWadah + '\')">🔲</button>');
+  wadah.appendChild(kendali);
+
+  if (opsi.pilihPetak !== false) pasangPilihPetakPeta(wadah, idWadah);
+}
+
+/**
+ * Dropdown untuk melompat ke petak tertentu.
+ * Pada kebun dengan puluhan petak, mencari satu petak dengan menggeser
+ * peta jauh lebih lambat daripada memilih namanya.
+ */
+function pasangPilihPetakPeta(wadah, idWadah) {
+  var petak = (S.data.petak || []).filter(function (p) {
+    return (p.koordinat || []).length >= 3;
+  });
+  if (petak.length < 2) return;
+
+  petak.sort(function (a, b) {
+    return String(a.nama || '').localeCompare(String(b.nama || ''));
+  });
+
+  var html = '<select onchange="zoomKePetak(\'' + idWadah + '\', this.value)" ' +
+    'aria-label="Lompat ke petak">' +
+    '<option value="">🔍 Lompat ke petak…</option>';
+  for (var i = 0; i < petak.length; i++) {
+    html += '<option value="' + esc(petak[i].id) + '">' +
+      esc(petak[i].nama) + ' · ' + rp(Math.round(angka(petak[i].luasM2))) + ' m²' +
+      '</option>';
+  }
+  html += '</select>';
+
+  var kotak = document.createElement('div');
+  kotak.className = 'pilihPetakPeta';
+  kotak.innerHTML = html;
+  wadah.appendChild(kotak);
+}
+
+function petaDariWadah(idWadah) {
+  return idWadah === 'petaPokok' ? _petaPokok : _peta;
+}
+
+function zoomKePetak(idWadah, petakId) {
+  if (!petakId) return;
+  var peta = petaDariWadah(idWadah);
+  var p = petakById(petakId);
+  if (!peta || !p || !(p.koordinat || []).length) return;
+  try {
+    peta.fitBounds(L.latLngBounds(p.koordinat), { padding: [40, 40], maxZoom: 19 });
+    toast('Menuju ' + p.nama + '.');
+  } catch (e) { /* peta belum siap */ }
+}
+
+function zoomSemuaPetak(idWadah) {
+  var peta = petaDariWadah(idWadah);
+  if (!peta) return;
+  var semua = [];
+  var petak = S.data.petak || [];
+  for (var i = 0; i < petak.length; i++) {
+    var t = petak[i].koordinat || [];
+    for (var j = 0; j < t.length; j++) semua.push(t[j]);
+  }
+  if (!semua.length) { toast('Belum ada petak berbatas.', 'galat'); return; }
+  try {
+    peta.fitBounds(L.latLngBounds(semua), { padding: [30, 30] });
+  } catch (e) { /* diabaikan */ }
+}
+
+/* ------------------------------------------------------------
+   LOKASI SAYA
+   ------------------------------------------------------------ */
+
+/**
+ * Memusatkan peta ke posisi pengguna dan menandainya, lengkap dengan
+ * lingkaran ketelitian.
+ *
+ * Ditekan sekali: cari lokasi dan ikuti. Ditekan lagi: berhenti
+ * mengikuti — supaya pengguna dapat menggeser peta tanpa terus
+ * ditarik kembali ke posisinya.
+ */
+function lokasiSaya(idWadah) {
+  var peta = petaDariWadah(idWadah);
+  if (!peta) return;
+
+  if (!navigator.geolocation) {
+    toast('Perangkat ini tidak mendukung GPS.', 'galat');
+    return;
+  }
+
+  if (_lokasiSaya.pantau !== null && _lokasiSaya.peta === idWadah) {
+    hentikanLokasiSaya();
+    toast('Berhenti mengikuti posisi.');
+    return;
+  }
+
+  hentikanLokasiSaya();
+  _lokasiSaya.peta = idWadah;
+  tandaiTombolLokasi(idWadah, true);
+  toast('Mencari sinyal GPS…');
+
+  var pertama = true;
+  _lokasiSaya.pantau = navigator.geolocation.watchPosition(function (pos) {
+    var titik = [pos.coords.latitude, pos.coords.longitude];
+    var ket = pos.coords.accuracy;
+
+    try {
+      if (!_lokasiSaya.penanda) {
+        _lokasiSaya.penanda = L.circleMarker(titik, {
+          radius: 7, color: '#fff', weight: 3,
+          fillColor: '#1E6FD9', fillOpacity: 1
+        }).addTo(peta);
+        /* Lingkaran ketelitian ditampilkan supaya pengguna melihat
+           seberapa yakin ponselnya — bukan sekadar titik yang terlihat
+           pasti padahal melesetnya bisa puluhan meter. */
+        _lokasiSaya.lingkaran = L.circle(titik, {
+          radius: ket, color: '#1E6FD9', weight: 1,
+          fillColor: '#1E6FD9', fillOpacity: 0.12
+        }).addTo(peta);
+      } else {
+        _lokasiSaya.penanda.setLatLng(titik);
+        _lokasiSaya.lingkaran.setLatLng(titik).setRadius(ket);
+      }
+      _lokasiSaya.penanda.bindPopup('Posisi Anda · ketelitian ± ' +
+        Math.round(ket) + ' m');
+
+      if (pertama) {
+        pertama = false;
+        peta.setView(titik, Math.max(peta.getZoom(), 18));
+        toast('Posisi ditemukan — ketelitian ± ' + Math.round(ket) + ' m.' +
+              (ket > 30 ? ' Sinyal masih lemah, tunggu sebentar.' : ''),
+              ket > 30 ? 'galat' : 'sukses');
+      } else {
+        peta.panTo(titik, { animate: true });
+      }
+    } catch (e) { /* peta sudah dibongkar */ }
+  }, function (e) {
+    hentikanLokasiSaya();
+    toast('GPS tidak dapat dibaca: ' +
+          (e.code === 1 ? 'izin lokasi ditolak' : (e.message || 'gagal')), 'galat');
+  }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+}
+
+function hentikanLokasiSaya() {
+  if (_lokasiSaya.pantau !== null) {
+    try { navigator.geolocation.clearWatch(_lokasiSaya.pantau); } catch (e) {}
+    _lokasiSaya.pantau = null;
+  }
+  var peta = petaDariWadah(_lokasiSaya.peta);
+  if (peta) {
+    if (_lokasiSaya.penanda) { try { peta.removeLayer(_lokasiSaya.penanda); } catch (e) {} }
+    if (_lokasiSaya.lingkaran) { try { peta.removeLayer(_lokasiSaya.lingkaran); } catch (e) {} }
+  }
+  tandaiTombolLokasi(_lokasiSaya.peta, false);
+  _lokasiSaya.penanda = null;
+  _lokasiSaya.lingkaran = null;
+  _lokasiSaya.peta = null;
+}
+
+function tandaiTombolLokasi(idWadah, aktif) {
+  var b = $('tblLokasi_' + idWadah);
+  if (b) b.classList.toggle('aktif', !!aktif);
+}
+
+/* ------------------------------------------------------------
+   LAYAR PENUH
+   ------------------------------------------------------------ */
+
+var _petaPenuh = null;
+
+/**
+ * Melebarkan peta ke seluruh layar.
+ *
+ * Fullscreen API dicoba lebih dulu karena ia juga menyembunyikan bilah
+ * peramban. Bila ditolak — beberapa WebView Android menolaknya tanpa
+ * pesan galat — dipakai cadangan berbasis CSS, yang hasilnya hampir
+ * sama dari sudut pandang pengguna.
+ */
+function petaLayarPenuh(idWadah) {
+  var wadah = $(idWadah);
+  if (!wadah) return;
+
+  if (_petaPenuh === idWadah) { keluarPetaPenuh(); return; }
+
+  _petaPenuh = idWadah;
+  wadah.classList.add('petaPenuh');
+  document.body.classList.add('adaPetaPenuh');
+
+  if (wadah.requestFullscreen) {
+    try { wadah.requestFullscreen().catch(function () {}); } catch (e) {}
+  } else if (wadah.webkitRequestFullscreen) {
+    try { wadah.webkitRequestFullscreen(); } catch (e) {}
+  }
+
+  var peta = petaDariWadah(idWadah);
+  if (peta) setTimeout(function () { peta.invalidateSize(); }, 220);
+  toast('Layar penuh. Tekan ⛶ lagi atau tombol Kembali untuk keluar.');
+}
+
+function keluarPetaPenuh() {
+  if (!_petaPenuh) return;
+  var wadah = $(_petaPenuh);
+  if (wadah) wadah.classList.remove('petaPenuh');
+  document.body.classList.remove('adaPetaPenuh');
+
+  if (document.fullscreenElement && document.exitFullscreen) {
+    try { document.exitFullscreen().catch(function () {}); } catch (e) {}
+  } else if (document.webkitFullscreenElement && document.webkitExitFullscreen) {
+    try { document.webkitExitFullscreen(); } catch (e) {}
+  }
+
+  var peta = petaDariWadah(_petaPenuh);
+  _petaPenuh = null;
+  if (peta) setTimeout(function () { peta.invalidateSize(); }, 220);
+}
+
+/** Benar bila sebuah peta sedang layar penuh — dipakai tombol Kembali. */
+function adaPetaPenuh() { return !!_petaPenuh; }
+
+/* Keluar dari layar penuh bila pengguna menekan Esc atau tombol
+   sistem, supaya kelas CSS tidak tertinggal menyala. */
+document.addEventListener('fullscreenchange', function () {
+  if (!document.fullscreenElement && _petaPenuh) keluarPetaPenuh();
+});
+document.addEventListener('webkitfullscreenchange', function () {
+  if (!document.webkitFullscreenElement && _petaPenuh) keluarPetaPenuh();
+});
 
 </script>
 </body>
