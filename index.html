@@ -1004,7 +1004,9 @@ html[data-mode="silau"] .petaLabel{font-size:.8rem}
    sebagian WebView Android menolak requestFullscreen tanpa pesan galat,
    dan tanpa cadangan ini tombolnya tampak rusak. */
 .petaPenuh{
-  position:fixed !important;inset:0 !important;z-index:4000 !important;
+  /* Di BAWAH jendela modal (4000) supaya detail petak dan penampil foto
+     tetap tampil di atas peta yang sedang layar penuh. */
+  position:fixed !important;inset:0 !important;z-index:3000 !important;
   width:100% !important;height:100% !important;max-height:none !important;
   border-radius:0 !important;margin:0 !important;
 }
@@ -1430,8 +1432,8 @@ if ('serviceWorker' in navigator) {
 <script>
 
 /* Versi antarmuka. HARUS naik bersama APP_VERSI di Code.gs. */
-var VERSI_KLIEN = '1.10.0';
-var TANGGAL_RILIS_KLIEN = '2026-09-09';
+var VERSI_KLIEN = '1.11.0';
+var TANGGAL_RILIS_KLIEN = '2026-09-10';
 
 /* ============================================================
    TaniPintar — inti aplikasi
@@ -2544,13 +2546,13 @@ function kumpulkanRuas() {
 function ambilFoto(kunci, pakaiKamera) {
   bukaPemilihBerkas({ kamera: pakaiKamera }, function (berkasTerpilih) {
     var berkas = berkasTerpilih[0];
-    kecilkanGambar(berkas, 1280, function (dataUrl) {
+    kecilkanGambar(berkas, 1280, function (dataUrl, info) {
       var el = $('f_' + kunci);
       if (el) el.value = dataUrl;
       var pra = $('pratinjau_' + kunci);
       if (pra) pra.innerHTML = '<img class="foto" src="' + dataUrl +
                                '" onclick="zoomFoto(this.src)">';
-      toast('Foto siap (' + Math.round(dataUrl.length / 1024) + ' KB).');
+      toast(pesanPemampatan(info));
     });
   });
 }
@@ -2638,12 +2640,22 @@ function ambilFotoBanyak(kunci, pakaiKamera) {
       if (selesai >= berkas.length) {
         tandaiProsesFoto(kunci, 0, 0);
         gambarPratinjauBanyak(kunci);
-        toast(berkas.length + ' foto siap disimpan.', 'sukses');
+        var daftar = _fotoBanyak[kunci] || [];
+        var totalKb = 0, asliKb = 0;
+        for (var t = 0; t < daftar.length; t++) {
+          if (!daftar[t].info) continue;
+          totalKb += daftar[t].info.kb;
+          asliKb += daftar[t].info.kbAsli;
+        }
+        toast(berkas.length + ' foto siap' +
+              (asliKb > 0 ? ' — diperkecil dari ' + rpKb(asliKb) + ' menjadi ' +
+                            rpKb(totalKb) : '') + '.', 'sukses');
         return;
       }
       var b = berkas[selesai];
-      kecilkanGambar(b, 1280, function (dataUrl) {
-        _fotoBanyak[kunci].push({ dataUrl: dataUrl, nama: b.name || '' });
+      kecilkanGambar(b, 1280, function (dataUrl, info) {
+        _fotoBanyak[kunci].push({ dataUrl: dataUrl, nama: b.name || '',
+                                  info: info });
         selesai++;
         tandaiProsesFoto(kunci, selesai, berkas.length);
         /* Jeda satu putaran supaya layar sempat menggambar kemajuannya. */
@@ -2652,6 +2664,23 @@ function ambilFotoBanyak(kunci, pakaiKamera) {
     }
     berikutnya();
   });
+}
+
+/**
+ * Memberi tahu bahwa foto memang diperkecil, beserta angkanya.
+ * Tanpa keterangan ini, jeda beberapa detik saat mengambil foto terasa
+ * seperti aplikasi tersendat — padahal justru sedang menghemat kuota
+ * dan ruang penyimpanan pengguna.
+ */
+function pesanPemampatan(info) {
+  if (!info) return 'Foto siap.';
+  if (!info.kbAsli) return 'Foto siap (' + info.kb + ' KB).';
+  return 'Foto diperkecil dari ' + rpKb(info.kbAsli) + ' menjadi ' +
+         rpKb(info.kb) + '.';
+}
+
+function rpKb(kb) {
+  return kb >= 1024 ? (Math.round(kb / 102.4) / 10) + ' MB' : Math.round(kb) + ' KB';
 }
 
 function tandaiProsesFoto(kunci, selesai, total) {
@@ -2722,37 +2751,107 @@ function hapusFoto(kunci) {
  * 50.000 karakter, jadi data URL harus di bawah ±45.000 karakter.
  * Mutu diturunkan bertahap sampai muat.
  */
+/**
+ * Memperkecil dan memampatkan gambar sebelum disimpan.
+ *
+ * Foto kamera ponsel sekarang berukuran 8-12 megapiksel, sekitar 3-6 MB.
+ * Yang disimpan aplikasi ini jauh lebih kecil: sisi terpanjang dipotong
+ * ke 1280 piksel dan dikodekan ulang sebagai JPEG di bawah 45 KB —
+ * penyusutan sekitar seratus kali lipat. Foto asli tidak pernah dikirim
+ * ke mana pun.
+ *
+ * Batas 45 KB bukan pilihan gaya: satu sel Google Spreadsheet hanya
+ * menampung sekitar 50.000 karakter, dan foto yang melewatinya akan
+ * terpotong diam-diam menjadi gambar rusak.
+ *
+ * Bagian yang terasa lambat bukan pemampatannya, melainkan penguraian
+ * foto raksasa itu menjadi piksel. Karena itu:
+ *   - createImageBitmap dipakai bila tersedia; ia menguraikan gambar di
+ *     luar utas utama sehingga layar tidak membeku.
+ *   - Berkas TIDAK lagi dibaca sebagai data URL. readAsDataURL mengubah
+ *     berkas 5 MB menjadi untaian teks 7 MB lebih dulu — pekerjaan berat
+ *     yang seluruhnya sia-sia.
+ *   - Bila hasilnya masih kebesaran, gambar yang SUDAH terurai dipakai
+ *     ulang. Sebelumnya berkasnya dibaca dan diurai ulang dari awal,
+ *     mengulang bagian yang paling lambat.
+ */
 function kecilkanGambar(berkas, sisiMaks, selesai) {
-  var pembaca = new FileReader();
-  pembaca.onload = function () {
-    var gbr = new Image();
-    gbr.onload = function () {
-      var lebar = gbr.width, tinggi = gbr.height;
-      if (lebar > sisiMaks || tinggi > sisiMaks) {
-        if (lebar > tinggi) { tinggi = Math.round(tinggi * sisiMaks / lebar); lebar = sisiMaks; }
-        else { lebar = Math.round(lebar * sisiMaks / tinggi); tinggi = sisiMaks; }
+  var mulai = Date.now();
+
+  function olah(sumber, lebarAsli, tinggiAsli, bersihkan) {
+    var sisi = sisiMaks;
+    var keluar = '';
+
+    for (var putaran = 0; putaran < 4; putaran++) {
+      var lebar = lebarAsli, tinggi = tinggiAsli;
+      if (lebar > sisi || tinggi > sisi) {
+        if (lebar > tinggi) {
+          tinggi = Math.round(tinggi * sisi / lebar); lebar = sisi;
+        } else {
+          lebar = Math.round(lebar * sisi / tinggi); tinggi = sisi;
+        }
       }
+
       var kanvas = document.createElement('canvas');
       kanvas.width = lebar; kanvas.height = tinggi;
-      kanvas.getContext('2d').drawImage(gbr, 0, 0, lebar, tinggi);
-      var mutu = 0.82;
-      var keluar = kanvas.toDataURL('image/jpeg', mutu);
-      while (keluar.length > 45000 && mutu > 0.28) {
-        mutu -= 0.1;
+      var ktx = kanvas.getContext('2d');
+      /* Penghalusan mutu tinggi: tanpa ini, pengecilan drastis membuat
+         tepi daun bergerigi dan gejala hama jadi sulit dinilai. */
+      ktx.imageSmoothingEnabled = true;
+      if ('imageSmoothingQuality' in ktx) ktx.imageSmoothingQuality = 'high';
+      ktx.drawImage(sumber, 0, 0, lebar, tinggi);
+
+      var mutu = 0.8;
+      keluar = kanvas.toDataURL('image/jpeg', mutu);
+      /* Mutu diturunkan dengan langkah besar lebih dulu: setiap
+         percobaan adalah satu penyandian JPEG penuh, dan pada ponsel
+         kelas menengah itu memakan waktu yang terasa. */
+      while (keluar.length > 45000 && mutu > 0.3) {
+        mutu -= 0.15;
         keluar = kanvas.toDataURL('image/jpeg', mutu);
       }
-      if (keluar.length > 45000 && sisiMaks > 640) {
-        // Masih terlalu besar walau mutu sudah rendah — perkecil dimensinya.
-        kecilkanGambar(berkas, Math.round(sisiMaks * 0.7), selesai);
-        return;
-      }
-      selesai(keluar);
+      if (keluar.length <= 45000 || sisi <= 560) break;
+
+      /* Masih kebesaran — perkecil dimensinya, memakai gambar yang
+         sudah terurai. Tidak ada pembacaan berkas ulang. */
+      sisi = Math.round(sisi * 0.72);
+    }
+
+    if (bersihkan) bersihkan();
+
+    if (keluar.length > 49000) {
+      toast('Foto ini terlalu besar walau sudah diperkecil. Coba foto lain.', 'galat');
+      return;
+    }
+    selesai(keluar, {
+      kb: Math.round(keluar.length / 1024),
+      kbAsli: Math.round((berkas.size || 0) / 1024),
+      milidetik: Date.now() - mulai
+    });
+  }
+
+  if (typeof createImageBitmap === 'function') {
+    createImageBitmap(berkas).then(function (bmp) {
+      olah(bmp, bmp.width, bmp.height, function () {
+        if (bmp.close) bmp.close();
+      });
+    }).catch(function () { lewatElemenGambar(); });
+  } else {
+    lewatElemenGambar();
+  }
+
+  function lewatElemenGambar() {
+    var url = URL.createObjectURL(berkas);
+    var gbr = new Image();
+    gbr.onload = function () {
+      olah(gbr, gbr.width, gbr.height, function () { URL.revokeObjectURL(url); });
     };
-    gbr.onerror = function () { toast('Berkas gambar tidak dapat dibaca.', 'galat'); };
-    gbr.src = pembaca.result;
-  };
-  pembaca.onerror = function () { toast('Gagal membaca berkas.', 'galat'); };
-  pembaca.readAsDataURL(berkas);
+    gbr.onerror = function () {
+      URL.revokeObjectURL(url);
+      toast('Berkas gambar tidak dapat dibaca.', 'galat');
+    };
+    gbr.src = url;
+  }
 }
 
 /* ---------- konfirmasi ---------- */
@@ -2868,15 +2967,13 @@ function gantiRiwayat() {
  */
 function pasangTombolKembali() {
   window.addEventListener('popstate', function (e) {
+    /* Ditangkap SEBELUM direset. Bendera ini membedakan langkah riwayat
+       yang kita tarik sendiri saat menutup modal dari tekanan tombol
+       Kembali oleh pengguna. Tanpa pembedaan itu, menutup jendela
+       detail ikut mengeluarkan peta dari layar penuh — satu tekan
+       tutup mengerjakan dua hal sekaligus. */
+    var dariTutupModal = _tutupTertunda;
     _tutupTertunda = false;
-
-    /* Layar penuh ditutup lebih dulu. Bila tidak, tombol Kembali akan
-       memindahkan tab sementara petanya masih menutupi seluruh layar. */
-    if (typeof adaPetaPenuh === 'function' && adaPetaPenuh()) {
-      keluarPetaPenuh();
-      dorongRiwayat();
-      return;
-    }
 
     /* Penutupan dibatalkan karena modal lain sudah terlanjur dibuka. */
     if (_abaikanPopstate) {
@@ -2908,6 +3005,18 @@ function pasangTombolKembali() {
       return;
     }
     _modalDiRiwayat = false;
+
+    /* Langkah ini kita tarik sendiri saat menutup modal — bukan tekanan
+       Kembali. Tidak ada lagi yang perlu dikerjakan. */
+    if (dariTutupModal) return;
+
+    /* Layar penuh ditutup sebelum tab berpindah, dan hanya setelah
+       jendela maupun penampil foto di atasnya tertutup lebih dulu. */
+    if (typeof adaPetaPenuh === 'function' && adaPetaPenuh()) {
+      keluarPetaPenuh();
+      dorongRiwayat();
+      return;
+    }
 
     var st = e.state;
     if (st && st.tp === 'tampilan') {
@@ -3308,7 +3417,7 @@ function gantiFotoProfil() {
     toast('Memperkecil foto…');
     /* Foto profil ditampilkan kecil, jadi 640 piksel sudah lebih dari
        cukup — dan ukuran kecil menjaga muatan sesi tetap ringan. */
-    kecilkanGambar(berkas, 640, function (dataUrl) {
+    kecilkanGambar(berkas, 640, function (dataUrl, info) {
       panggil('profil_foto', { fotoUrl: dataUrl }).then(function (r) {
         S.pengguna.fotoUrl = r.fotoUrl;
         simpanLokal(LS.pengguna, S.pengguna);
@@ -3581,6 +3690,7 @@ function gambarPeta(idElemen) {
   }
 
   bersihkanPeta();
+  _petaSudahDipusatkan = false;
   try {
     _peta = L.map(idElemen, {
       center: pusatPeta(),
@@ -3716,7 +3826,12 @@ function gambarPetakDiPeta() {
       L.marker([angka(p.pusatLat), angka(p.pusatLng)], {
         icon: L.divIcon({ className: '', html: '<div class="petaLabel">' +
           esc(p.nama.length > 22 ? p.nama.substring(0, 21) + '…' : p.nama) + '</div>',
-          iconSize: [0, 0] })
+          iconSize: [0, 0] }),
+        /* Label TIDAK boleh menerima ketukan. Bila interaktif, ia
+           menutupi poligon tepat di tengah petak — bagian yang paling
+           besar dan paling wajar ditekan orang untuk membuka detail. */
+        interactive: false,
+        keyboard: false
       }).addTo(_lapisanPetak);
     }
   }
@@ -3731,11 +3846,23 @@ function gambarPetakDiPeta() {
                  '% area').addTo(_lapisanPetak);
   }
 
-  if (semuaTitik.length && !_modeGambar) {
-    try { _peta.fitBounds(L.latLngBounds(semuaTitik), { padding: [24, 24], maxZoom: 18 }); }
-    catch (e) {}
+  /* Peta HANYA dipusatkan otomatis pada penggambaran pertama.
+     Sebelumnya ini berjalan setiap kali petak digambar ulang — dan
+     karena penggambaran ulang terjadi setelah menyimpan catatan,
+     memuat data, atau sekadar berpindah sub-tab, tampilan tiba-tiba
+     melompat kembali ke seluruh kebun tepat saat pengguna sedang
+     memperbesar satu sudut. Untuk memusatkan kembali, sekarang ada
+     tombol khusus. */
+  if (semuaTitik.length && !_modeGambar && !_petaSudahDipusatkan) {
+    try {
+      _peta.fitBounds(L.latLngBounds(semuaTitik), { padding: [24, 24], maxZoom: 18 });
+      _petaSudahDipusatkan = true;
+    } catch (e) {}
   }
 }
+
+/* Ditandai supaya pemusatan otomatis hanya sekali per pembuatan peta. */
+var _petaSudahDipusatkan = false;
 
 /**
  * Gaya batas petak. Nilai yang diisi pengguna diutamakan; bila kosong,
@@ -7555,7 +7682,9 @@ function formFotoTumbuh(petakId) {
         'diperlukan dalam satu kali unggah — misalnya empat sudut kebun pada hari ' +
         'yang sama. Seluruhnya disimpan dengan tanggal dan keterangan yang sama, ' +
         'lalu tampil sebagai galeri yang bisa digeser di peta dan di detail petak.' +
-        '</span>' },
+        '<br><br>Setiap foto otomatis diperkecil ke sisi 1280 piksel dan dimampatkan ' +
+        'di bawah 45 KB sebelum dikirim — biasanya menyusut sekitar seratus kali. ' +
+        'Jeda beberapa detik saat memilih foto adalah proses itu.</span>' },
     { k: 'tanggal', n: 'Tanggal', t: 'tanggal', wajib: true, bawaan: hariIni() },
     { k: 'fotoUrl', n: 'Foto tanaman', t: 'fotoBanyak',
       help: 'Ambil dari sudut yang sama setiap kali agar perbandingan antar waktu ' +
@@ -8651,6 +8780,7 @@ function bagianPokokPeta(petak) {
   return html;
 }
 
+var _petaPokokSudahDipusatkan = false;
 var _perluRenderPetaPokok = false;
 var _petaPokok = null;
 
@@ -8674,6 +8804,7 @@ function gambarPetaPokok() {
 
   try {
     _petaPokok = L.map('petaPokok', { center: pusat, zoom: 17, maxZoom: 22, zoomSnap: 0.5 });
+    _petaPokokSudahDipusatkan = false;
     /* Pemilih petak tidak dipasang di sini: petak dipilih lewat dropdown
        di atas tab Pokok, dan dua pemilih untuk hal yang sama akan
        membingungkan. */
@@ -8727,10 +8858,22 @@ function gambarPetaPokok() {
     })(p));
   }
 
-  if (batas.length) {
-    try { _petaPokok.fitBounds(L.latLngBounds(batas).pad(0.08)); } catch (e) {}
-  } else if (titik.length >= 3) {
-    try { _petaPokok.fitBounds(L.latLngBounds(titik).pad(0.08)); } catch (e) {}
+  /* Sama seperti peta kebun: dipusatkan sekali saja. Peta pokok
+     digambar ulang setiap kali status pohon diubah, dan pemusatan
+     otomatis membuat tampilan melompat pergi dari pohon yang sedang
+     dikerjakan. */
+  if (!_petaPokokSudahDipusatkan) {
+    if (batas.length) {
+      try {
+        _petaPokok.fitBounds(L.latLngBounds(batas).pad(0.08));
+        _petaPokokSudahDipusatkan = true;
+      } catch (e) {}
+    } else if (titik.length >= 3) {
+      try {
+        _petaPokok.fitBounds(L.latLngBounds(titik).pad(0.08));
+        _petaPokokSudahDipusatkan = true;
+      } catch (e) {}
+    }
   }
 
   setTimeout(function () { if (_petaPokok) _petaPokok.invalidateSize(); }, 120);
@@ -9493,6 +9636,14 @@ function bagianVersi() {
      daftar perubahan kode. Pengguna perlu tahu apa yang berubah bagi
      dirinya, bukan nama fungsi yang diperbaiki. */
   html += '<div class="kartu"><h3>Riwayat perubahan</h3>' +
+    catatanVersi('1.11.0', '10 September 2026', [
+      'Perbaikan: peta tidak lagi melompat sendiri ke tampilan awal — ' +
+        'ditambahkan tombol pusatkan di peta kebun dan peta pokok',
+      'Perbaikan: detail petak dan pohon kini terlihat saat peta layar penuh',
+      'Perbaikan: label petak tidak lagi menghalangi ketukan pada petaknya',
+      'Foto kamera diproses jauh lebih cepat, dan keterangan penyusutannya ' +
+        'ditampilkan'
+    ]) +
     catatanVersi('1.10.0', '9 September 2026', [
       'Perbaikan: mengambil dan mengunggah foto tidak berfungsi di sebagian ponsel',
       'Perbaikan: foto profil di header terlalu besar dan tidak bisa dihapus',
@@ -12518,6 +12669,12 @@ function pasangKendaliPeta(idWadah, opsi) {
     '<button type="button" id="tblLokasi_' + idWadah + '" ' +
     'title="Lokasi saya" aria-label="Lokasi saya" ' +
     'onclick="lokasiSaya(\'' + idWadah + '\')">📍</button>' +
+    /* Tombol pusatkan. Ada karena pemusatan otomatis sudah dimatikan:
+       tampilan tidak lagi melompat sendiri, jadi pengguna perlu cara
+       mengembalikannya saat memang menginginkannya. */
+    '<button type="button" title="Pusatkan tampilan" ' +
+    'aria-label="Pusatkan tampilan" ' +
+    'onclick="pusatkanPeta(\'' + idWadah + '\')">🎯</button>' +
     (opsi.tanpaSemua ? ''
       : '<button type="button" title="Lihat semua petak" ' +
         'aria-label="Lihat semua petak" ' +
@@ -12585,6 +12742,38 @@ function zoomSemuaPetak(idWadah) {
   if (!semua.length) { toast('Belum ada petak berbatas.', 'galat'); return; }
   try {
     peta.fitBounds(L.latLngBounds(semua), { padding: [30, 30] });
+  } catch (e) { /* diabaikan */ }
+}
+
+/**
+ * Mengembalikan tampilan ke isi peta yang sedang dibuka.
+ *
+ * Pada peta kebun: seluruh petak. Pada peta pokok: petak yang sedang
+ * dipilih beserta seluruh pohonnya.
+ */
+function pusatkanPeta(idWadah) {
+  var peta = petaDariWadah(idWadah);
+  if (!peta) return;
+
+  var titik = [];
+  if (idWadah === 'petaPokok') {
+    var p = petakById(_pokok.petakId);
+    if (p && (p.koordinat || []).length) titik = titik.concat(p.koordinat);
+    var daftar = _pokok.daftar || [];
+    for (var i = 0; i < daftar.length; i++) {
+      if (angka(daftar[i].lat)) titik.push([angka(daftar[i].lat), angka(daftar[i].lng)]);
+    }
+  } else {
+    var petak = S.data.petak || [];
+    for (var j = 0; j < petak.length; j++) {
+      var t = petak[j].koordinat || [];
+      for (var k = 0; k < t.length; k++) titik.push(t[k]);
+    }
+  }
+
+  if (!titik.length) { toast('Belum ada yang dapat dipusatkan.', 'galat'); return; }
+  try {
+    peta.fitBounds(L.latLngBounds(titik).pad(0.06));
   } catch (e) { /* diabaikan */ }
 }
 
@@ -12707,12 +12896,6 @@ function petaLayarPenuh(idWadah) {
   wadah.classList.add('petaPenuh');
   document.body.classList.add('adaPetaPenuh');
 
-  if (wadah.requestFullscreen) {
-    try { wadah.requestFullscreen().catch(function () {}); } catch (e) {}
-  } else if (wadah.webkitRequestFullscreen) {
-    try { wadah.webkitRequestFullscreen(); } catch (e) {}
-  }
-
   var peta = petaDariWadah(idWadah);
   if (peta) setTimeout(function () { peta.invalidateSize(); }, 220);
   toast('Layar penuh. Tekan ⛶ lagi atau tombol Kembali untuk keluar.');
@@ -12724,12 +12907,6 @@ function keluarPetaPenuh() {
   if (wadah) wadah.classList.remove('petaPenuh');
   document.body.classList.remove('adaPetaPenuh');
 
-  if (document.fullscreenElement && document.exitFullscreen) {
-    try { document.exitFullscreen().catch(function () {}); } catch (e) {}
-  } else if (document.webkitFullscreenElement && document.webkitExitFullscreen) {
-    try { document.webkitExitFullscreen(); } catch (e) {}
-  }
-
   var peta = petaDariWadah(_petaPenuh);
   _petaPenuh = null;
   if (peta) setTimeout(function () { peta.invalidateSize(); }, 220);
@@ -12738,14 +12915,15 @@ function keluarPetaPenuh() {
 /** Benar bila sebuah peta sedang layar penuh — dipakai tombol Kembali. */
 function adaPetaPenuh() { return !!_petaPenuh; }
 
-/* Keluar dari layar penuh bila pengguna menekan Esc atau tombol
-   sistem, supaya kelas CSS tidak tertinggal menyala. */
-document.addEventListener('fullscreenchange', function () {
-  if (!document.fullscreenElement && _petaPenuh) keluarPetaPenuh();
-});
-document.addEventListener('webkitfullscreenchange', function () {
-  if (!document.webkitFullscreenElement && _petaPenuh) keluarPetaPenuh();
-});
+/* Fullscreen API SENGAJA TIDAK DIPAKAI.
+   Elemen yang masuk lapisan fullscreen bawaan peramban menyembunyikan
+   SELURUH elemen yang bukan keturunannya — termasuk jendela detail,
+   penampil foto, dan pesan singkat. Akibatnya menekan "Detail petak"
+   saat layar penuh tampak seperti aplikasi membeku: jendelanya terbuka,
+   tetapi tidak terlihat sama sekali.
+
+   Pendekatan berbasis CSS memberi hasil yang hampir sama bagi pengguna
+   dan tidak merusak apa pun di atasnya. */
 
 </script>
 </body>
