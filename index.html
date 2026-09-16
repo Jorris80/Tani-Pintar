@@ -1432,8 +1432,8 @@ if ('serviceWorker' in navigator) {
 <script>
 
 /* Versi antarmuka. HARUS naik bersama APP_VERSI di Code.gs. */
-var VERSI_KLIEN = '1.11.0';
-var TANGGAL_RILIS_KLIEN = '2026-09-10';
+var VERSI_KLIEN = '1.12.0';
+var TANGGAL_RILIS_KLIEN = '2026-09-11';
 
 /* ============================================================
    TaniPintar — inti aplikasi
@@ -1600,7 +1600,7 @@ function modeGas() {
 }
 
 function urlGas() {
-  return (window.TANIPINTAR_CONFIG && window.TANIPINTAR_CONFIG.gasUrl) || '';
+  return (window.TANIPINTAR_CONFIG && window.TANIPINTAR_CONFIG.gasUrl) || 'https://script.google.com/macros/s/AKfycbwSbDs7R-Z2FS38FMsDCD96Q9fgwFUBXXu1UePNF7BGPqopL5VBDpcklPviXMxjVvdp/exec';
 }
 
 /**
@@ -6591,6 +6591,11 @@ function tabSetelan() {
     { k: 'peta', n: 'Peta Dasar' },
     { k: 'data', n: 'Data & Luring' }
   ];
+  /* Penyuluh ikut dapat melihat ukuran data: merekalah yang biasanya
+     lebih dulu menyadari aplikasi melambat, dan mereka perlu dapat
+     memeriksa sebabnya tanpa menunggu admin. Tindakan yang menghapus
+     tetap khusus admin. */
+  if (bolehKelola()) daftar.push({ k: 'ukuran', n: 'Ukuran Data' });
   if (bolehAdmin()) {
     daftar.push({ k: 'pengguna', n: 'Pengguna' });
     daftar.push({ k: 'komoditas', n: 'Komoditas' });
@@ -6602,6 +6607,7 @@ function tabSetelan() {
   else if (sub === 'data') html += bagianSetelanData();
   else if (sub === 'pengguna' && bolehAdmin()) html += bagianPengguna();
   else if (sub === 'komoditas' && bolehAdmin()) html += bagianKomoditas();
+  else if (sub === 'ukuran' && bolehKelola()) html += bagianUkuranData();
   else if (sub === 'lisensi' && bolehAdmin()) html += bagianLisensi();
   else html += bagianSetelanUmum();
   return html;
@@ -9636,6 +9642,13 @@ function bagianVersi() {
      daftar perubahan kode. Pengguna perlu tahu apa yang berubah bagi
      dirinya, bukan nama fungsi yang diperbaiki. */
   html += '<div class="kartu"><h3>Riwayat perubahan</h3>' +
+    catatanVersi('1.12.0', '11 September 2026', [
+      'Pemantau ukuran data: kuota sel, jumlah foto, dan isi tiap lembar',
+      'Arsip tahunan — memindahkan catatan satu tahun ke berkas Spreadsheet ' +
+        'terpisah',
+      'Pangkas foto lama dengan menyisakan beberapa yang terbaru per petak',
+      'Buang prakiraan cuaca dan catatan perubahan yang sudah lewat'
+    ]) +
     catatanVersi('1.11.0', '10 September 2026', [
       'Perbaikan: peta tidak lagi melompat sendiri ke tampilan awal — ' +
         'ditambahkan tombol pusatkan di peta kebun dan peta pokok',
@@ -12924,6 +12937,427 @@ function adaPetaPenuh() { return !!_petaPenuh; }
 
    Pendekatan berbasis CSS memberi hasil yang hampir sama bagi pengguna
    dan tidak merusak apa pun di atasnya. */
+
+
+/* ============================================================
+   UKURAN DATA, ARSIP, DAN PEMANGKASAN
+   ============================================================
+   Bagian ini menghapus data. Karena itu seluruhnya dirancang
+   dengan urutan yang sama:
+
+       lihat angkanya → pratinjau → konfirmasi diketik → jalankan
+
+   Tidak ada satu pun tindakan di sini yang berjalan hanya karena
+   sebuah tombol tertekan. Konfirmasi berupa ketikan dipilih
+   dengan sengaja: tombol "Ya" dapat tertekan tanpa dibaca, kata
+   yang harus diketik tidak bisa.
+   ============================================================ */
+
+var _ukuran = { data: null, memuat: false };
+
+function bagianUkuranData() {
+  var html = '<div class="kartu"><div class="baris">' +
+    '<h3 style="margin:0">💾 Ukuran &amp; Penyimpanan Data</h3>' +
+    '<button class="tbl sekunder kecil kanan" onclick="muatUkuranData()">' +
+    '🔄 Periksa sekarang</button></div>' +
+    '<p style="font-size:.83rem;color:var(--redup)">Memeriksa seluruh lembar ' +
+    'membutuhkan beberapa detik pada berkas yang besar.</p>';
+
+  if (_ukuran.memuat) {
+    html += '<div class="kosong"><span class="muat"></span>Menghitung isi lembar…</div>';
+  } else if (!_ukuran.data) {
+    html += '<div class="kosong"><span class="ik">📊</span>' +
+      'Tekan Periksa sekarang untuk melihat ukuran data Anda.</div>';
+  } else {
+    html += gambarUkuranData(_ukuran.data);
+  }
+  return html + '</div>' + (_ukuran.data ? bagianArsip() : '');
+}
+
+function muatUkuranData() {
+  if (!S.daring) {
+    toast('Pemeriksaan ukuran memerlukan sambungan internet.', 'galat');
+    return;
+  }
+  _ukuran.memuat = true;
+  render();
+  panggil('ukuran_data', {}).then(function (r) {
+    _ukuran.data = r;
+    _ukuran.memuat = false;
+    render();
+  }).catch(function (e) {
+    _ukuran.memuat = false;
+    render();
+    toast(e.message, 'galat');
+  });
+}
+
+function gambarUkuranData(U) {
+  var warna = U.tingkat === 'bahaya' ? 'merah'
+    : (U.tingkat === 'peringatan' ? 'kuning' : 'hijau');
+
+  var html = '<div class="kisi kisi3" style="margin-bottom:10px">' +
+    kartuStat('🧮', U.persenSel + '%', 'Kuota Sel Terpakai',
+              rupiahSingkatKlien(U.totalSel) + ' dari 10 juta') +
+    kartuStat('🖼️', String(U.totalFoto), 'Foto Tersimpan',
+              beratFoto(U.byteFoto)) +
+    kartuStat('📄', String(U.lembar.length), 'Lembar', 'di dalam berkas ini') +
+    '</div>';
+
+  /* Batang kuota. Angka persen saja sulit dirasakan; batang membuat
+     "masih lapang" atau "hampir penuh" terlihat dalam sekejap. */
+  html += '<div class="batang" style="height:13px">' +
+    '<i style="width:' + Math.min(100, U.persenSel) + '%;background:var(--' +
+    (U.tingkat === 'bahaya' ? 'bahaya' : (U.tingkat === 'peringatan'
+      ? 'peringatan' : 'sukses')) + ')"></i></div>' +
+    '<p style="font-size:.76rem;color:var(--redup);margin-top:4px">' +
+    'Sisa ' + rupiahSingkatKlien(U.sisaSel) + ' sel</p>';
+
+  for (var c = 0; c < U.catatan.length; c++) {
+    var n = U.catatan[c];
+    var ikon = n.jenis === 'bahaya' ? '⚠️'
+      : (n.jenis === 'peringatan' ? '❗' : (n.jenis === 'baik' ? '✅' : 'ℹ️'));
+    var w = n.jenis === 'bahaya' ? 'merah'
+      : (n.jenis === 'peringatan' ? 'kuning' : (n.jenis === 'baik' ? 'hijau' : 'biru'));
+    html += '<div class="spanduk ' + w + '"><span>' + ikon + '</span><span>' +
+      esc(n.teks) + '</span></div>';
+  }
+
+  /* Penjelasan batas yang sebenarnya. Banyak pengguna menyangka
+     Spreadsheet dibatasi jumlah baris; salah paham itu membuat mereka
+     memangkas data yang sebetulnya tidak perlu dipangkas. */
+  html += '<hr class="pisah"><h4>Batas yang sebenarnya berlaku</h4>' +
+    '<div class="gulir"><table><thead><tr><th>Batas</th><th>Nilai</th>' +
+    '<th>Yang terkena</th></tr></thead><tbody>' +
+    '<tr><td>Sel per berkas</td><td><b>10 juta</b></td>' +
+    '<td>Batas keras. Bila penuh, catatan baru tidak dapat disimpan.</td></tr>' +
+    '<tr><td>Karakter per sel</td><td><b>50.000</b></td>' +
+    '<td>Membatasi foto — karena itu tiap foto dimampatkan di bawah 45 KB.</td></tr>' +
+    '<tr><td>Waktu jalan skrip</td><td><b>6 menit</b></td>' +
+    '<td>Yang paling sering terasa: lembar besar membuat semuanya melambat.</td>' +
+    '</tr></tbody></table></div>' +
+    '<p style="font-size:.78rem;color:var(--redup);margin-top:6px">' +
+    'Spreadsheet <b>tidak</b> dibatasi jumlah baris. Yang membatasi adalah jumlah ' +
+    'sel — yaitu baris dikalikan kolom, dijumlahkan dari seluruh lembar.</p>';
+
+  html += '<hr class="pisah"><h4>Isi tiap lembar</h4>' +
+    '<div class="gulir"><table><thead><tr><th>Lembar</th>' +
+    '<th class="angka">Baris</th><th class="angka">Sel</th>' +
+    '<th class="angka">Foto</th></tr></thead><tbody>';
+  for (var i = 0; i < U.lembar.length; i++) {
+    var L = U.lembar[i];
+    if (!L.baris && !L.foto) continue;
+    html += '<tr><td><b>' + esc(L.label) + '</b>' +
+      (L.label !== L.nama ? '<br><small style="color:var(--redup)">' + esc(L.nama) +
+        '</small>' : '') + '</td>' +
+      '<td class="angka">' + rp(L.baris) + '</td>' +
+      '<td class="angka">' + rupiahSingkatKlien(L.selDialokasikan) + '</td>' +
+      '<td class="angka">' + (L.foto ? rp(L.foto) : '—') + '</td></tr>';
+  }
+  html += '</tbody></table></div>' +
+    '<p style="font-size:.76rem;color:var(--redup);margin-top:6px">' +
+    'Kolom Sel menghitung seluruh sel yang dialokasikan lembar, bukan hanya yang ' +
+    'terisi — begitulah Google menghitungnya. Lembar kosong pun tetap memakan ' +
+    'kuota.</p>';
+
+  html += '<p style="font-size:.74rem;color:var(--redup);margin-top:8px">Diperiksa ' +
+    esc(String(U.diperiksaPada || '').replace('T', ' ').substring(0, 16)) + '</p>';
+  return html;
+}
+
+/** "0 MB" untuk sembilan foto terbaca seperti kekeliruan; di bawah satu
+    megabita, satuannya turun ke kilobita. */
+function beratFoto(byte) {
+  var b = angka(byte);
+  if (b >= 1048576) return (Math.round(b / 104857.6) / 10) + ' MB';
+  if (b >= 1024) return Math.round(b / 1024) + ' KB';
+  return b + ' byte';
+}
+
+function rupiahSingkatKlien(n) {
+  var v = angka(n);
+  if (v >= 1000000) return (Math.round(v / 100000) / 10) + ' jt';
+  if (v >= 1000) return (Math.round(v / 100) / 10) + ' rb';
+  return String(Math.round(v));
+}
+
+/* ============================================================
+   ARSIP & PEMANGKASAN
+   ============================================================ */
+
+function bagianArsip() {
+  if (!bolehAdmin()) {
+    return '<div class="kartu"><h3>🗄️ Arsip &amp; Pemangkasan</h3>' +
+      '<div class="kosong"><span class="ik">🔒</span>' +
+      'Hanya admin yang dapat mengarsipkan atau memangkas data.</div></div>';
+  }
+
+  var U = _ukuran.data || {};
+  var tahun = U.tahun || [];
+  var tahunIni = new Date().getFullYear();
+  var bisa = tahun.filter(function (t) { return t.tahun < tahunIni; });
+
+  var html = '<div class="kartu"><h3>🗄️ Arsip &amp; Pemangkasan</h3>' +
+    '<div class="spanduk kuning"><span>⚠️</span><span>' +
+    '<b>Tindakan di bagian ini menghapus data</b>' +
+    'Seluruhnya berjalan dengan urutan yang sama: lihat angkanya, lihat ' +
+    'pratinjaunya, ketik konfirmasi, baru jalan. Sebelum memulai, unduh dulu ' +
+    'cadangan lewat Setelan ▸ Data &amp; Luring.</span></div>';
+
+  /* --- Arsip tahunan --- */
+  html += '<hr class="pisah"><h4>1. Arsip tahunan</h4>' +
+    '<p style="font-size:.84rem;line-height:1.7">Memindahkan seluruh catatan satu ' +
+    'tahun ke <b>berkas Spreadsheet terpisah</b>, lalu menghapusnya dari berkas ' +
+    'utama. Berkas arsip tetap milik Anda dan dapat dibuka kapan saja.</p>' +
+    '<div class="spanduk biru"><span>💡</span><span>' +
+    'Memindahkan ke lembar lain di dalam berkas yang sama <b>tidak</b> membebaskan ' +
+    'kuota sedikit pun — kuota dihitung per berkas, bukan per lembar. Hanya berkas ' +
+    'terpisah yang benar-benar melegakan.</span></div>';
+
+  if (!bisa.length) {
+    html += '<div class="kosong"><span class="ik">📅</span>' +
+      'Belum ada tahun yang sudah lewat untuk diarsipkan. Tahun berjalan sengaja ' +
+      'tidak dapat diarsipkan.</div>';
+  } else {
+    html += '<label class="ruas"><span class="nama">Tahun yang diarsipkan</span>' +
+      '<select id="arsipTahun"><option value="">— pilih tahun —</option>';
+    for (var i = 0; i < bisa.length; i++) {
+      html += '<option value="' + bisa[i].tahun + '">' + bisa[i].tahun + ' · ' +
+        rp(bisa[i].baris) + ' baris</option>';
+    }
+    html += '</select></label>' +
+      '<button class="tbl sekunder lebar" onclick="pratinjauArsip()">' +
+      '👁️ Lihat yang akan dipindahkan</button>' +
+      '<div id="hasilArsip"></div>';
+  }
+
+  /* --- Pemangkasan foto --- */
+  html += '<hr class="pisah"><h4>2. Pangkas foto lama</h4>' +
+    '<p style="font-size:.84rem;line-height:1.7">Mengosongkan gambar lama dan ' +
+    'menyisakan beberapa yang terbaru untuk tiap petak atau pohon. ' +
+    '<b>Baris catatannya tetap ada</b> — tanggal, keterangan, dan pencatatnya tidak ' +
+    'hilang; hanya gambarnya yang tidak lagi dapat dibuka.</p>' +
+    '<div class="baris">' +
+    '<label class="ruas" style="flex:1;min-width:150px">' +
+    '<span class="nama">Lembar</span><select id="pangkasLembar">' +
+    '<option value="FotoTumbuh">Foto pertumbuhan petak</option>' +
+    '<option value="PokokCatatan">Foto per pokok</option></select></label>' +
+    '<label class="ruas" style="flex:1;min-width:130px">' +
+    '<span class="nama">Sisakan terbaru</span>' +
+    '<input type="number" id="pangkasSisa" value="3" min="0" max="50"></label>' +
+    '</div>' +
+    '<button class="tbl sekunder lebar" onclick="pratinjauPangkasFoto()">' +
+    '👁️ Lihat yang akan dikosongkan</button>' +
+    '<div id="hasilPangkasFoto"></div>';
+
+  /* --- Pemangkasan data sementara --- */
+  html += '<hr class="pisah"><h4>3. Buang data sementara</h4>' +
+    '<p style="font-size:.84rem;line-height:1.7">Membuang prakiraan cuaca yang sudah ' +
+    'lewat, bacaan sensor lama, dan catatan perubahan lama. Ketiganya tidak memuat ' +
+    'angka usaha maupun data pribadi, jadi tidak ada laporan yang berubah karena ' +
+    'pembuangannya.</p>' +
+    '<label class="ruas"><span class="nama">Simpan berapa hari terakhir</span>' +
+    '<input type="number" id="pangkasHari" value="90" min="7" max="3650"></label>' +
+    '<button class="tbl sekunder lebar" onclick="pratinjauPangkasSementara()">' +
+    '👁️ Lihat yang akan dibuang</button>' +
+    '<div id="hasilPangkasSementara"></div>';
+
+  return html + '</div>';
+}
+
+/* ------------------------------------------------------------
+   ARSIP TAHUNAN
+   ------------------------------------------------------------ */
+
+function pratinjauArsip() {
+  var tahun = angka($('arsipTahun') ? $('arsipTahun').value : 0);
+  if (!tahun) { toast('Pilih tahun terlebih dahulu.', 'galat'); return; }
+
+  $('hasilArsip').innerHTML = '<div class="spanduk biru">' +
+    '<span class="muat"></span><span>Menghitung…</span></div>';
+
+  panggil('arsip_pratinjau', { tahun: tahun }).then(function (r) {
+    if (!r.total) {
+      $('hasilArsip').innerHTML = '<div class="spanduk kuning"><span>📭</span>' +
+        '<span>' + esc(r.pesan) + '</span></div>';
+      return;
+    }
+    var html = '<div class="spanduk biru"><span>📦</span><span><b>' +
+      rp(r.total) + ' baris akan dipindahkan</b>' +
+      (r.totalFoto ? 'Termasuk ' + rp(r.totalFoto) + ' foto.' : '') +
+      '</span></div>' +
+      '<div class="gulir"><table><thead><tr><th>Jenis catatan</th>' +
+      '<th class="angka">Baris</th></tr></thead><tbody>';
+    for (var i = 0; i < r.rincian.length; i++) {
+      html += '<tr><td>' + esc(r.rincian[i].label) + '</td>' +
+        '<td class="angka">' + rp(r.rincian[i].baris) + '</td></tr>';
+    }
+    html += '</tbody></table></div>' +
+      '<div class="spanduk merah"><span>⚠️</span><span>' +
+      '<b>Baris ini akan dihapus dari berkas utama</b>' +
+      'Salinannya dipindahkan lebih dulu ke berkas Spreadsheet baru, dan jumlahnya ' +
+      'diperiksa sebelum satu pun baris dihapus. Bila pemeriksaan gagal, tidak ada ' +
+      'yang dihapus.<br><br>Laporan tahun ' + r.tahun + ' tidak akan dapat dibuka ' +
+      'lagi dari aplikasi ini setelah diarsipkan. Cetak atau ekspor laporannya dulu ' +
+      'bila masih diperlukan.</span></div>' +
+      '<label class="ruas"><span class="nama">Ketik <b>' + r.tahun +
+      '</b> untuk melanjutkan</span>' +
+      '<input type="text" id="arsipKonfirmasi" placeholder="' + r.tahun + '" ' +
+      'inputmode="numeric"></label>' +
+      '<button class="tbl bahaya lebar" onclick="jalankanArsip(' + r.tahun + ')">' +
+      '🗄️ Arsipkan tahun ' + r.tahun + '</button>';
+    $('hasilArsip').innerHTML = html;
+  }).catch(function (e) {
+    $('hasilArsip').innerHTML = '<div class="spanduk merah"><span>⚠️</span><span>' +
+      esc(e.message) + '</span></div>';
+  });
+}
+
+function jalankanArsip(tahun) {
+  var konfirmasi = $('arsipKonfirmasi') ? $('arsipKonfirmasi').value.trim() : '';
+  if (konfirmasi !== String(tahun)) {
+    toast('Ketik ' + tahun + ' pada kotak konfirmasi.', 'galat');
+    return;
+  }
+
+  $('hasilArsip').innerHTML = '<div class="spanduk biru"><span class="muat"></span>' +
+    '<span>Menyalin dan memeriksa… jangan tutup halaman ini.</span></div>';
+
+  panggil('arsip_jalankan', { tahun: tahun, konfirmasi: konfirmasi })
+    .then(function (r) {
+      $('hasilArsip').innerHTML = '<div class="spanduk hijau"><span>✅</span>' +
+        '<span><b>' + esc(r.pesan) + '</b>' +
+        'Berkas arsip: <b>' + esc(r.namaArsip) + '</b><br>' +
+        '<a href="' + esc(r.urlArsip) + '" target="_blank" rel="noopener">' +
+        'Buka berkas arsip</a> — simpan tautannya, berkas ini ada di Google Drive ' +
+        'Anda.</span></div>';
+      toast(r.pesan, 'sukses');
+      _ukuran.data = null;
+      muatData(true);
+    }).catch(function (e) {
+      $('hasilArsip').innerHTML = '<div class="spanduk merah"><span>⚠️</span>' +
+        '<span><b>Pengarsipan dihentikan</b>' + esc(e.message) + '</span></div>';
+    });
+}
+
+/* ------------------------------------------------------------
+   PANGKAS FOTO
+   ------------------------------------------------------------ */
+
+function pratinjauPangkasFoto() {
+  var d = {
+    lembar: $('pangkasLembar').value,
+    simpanTerbaru: angka($('pangkasSisa').value, 3),
+    pratinjau: true
+  };
+  $('hasilPangkasFoto').innerHTML = '<div class="spanduk biru">' +
+    '<span class="muat"></span><span>Menghitung…</span></div>';
+
+  panggil('pangkas_foto', d).then(function (r) {
+    if (!r.jumlah) {
+      $('hasilPangkasFoto').innerHTML = '<div class="spanduk kuning"><span>📭</span>' +
+        '<span>' + esc(r.pesan) + '</span></div>';
+      return;
+    }
+    $('hasilPangkasFoto').innerHTML =
+      '<div class="spanduk biru"><span>🖼️</span><span>' + esc(r.pesan) + '</span></div>' +
+      '<div class="spanduk merah"><span>⚠️</span><span>' +
+      '<b>Gambar yang dikosongkan tidak dapat dikembalikan</b>' +
+      'Pastikan foto penting sudah diunduh atau disalin ke tempat lain.</span></div>' +
+      '<label class="ruas"><span class="nama">Ketik <b>HAPUS FOTO</b> untuk ' +
+      'melanjutkan</span><input type="text" id="pangkasKonfirmasi" ' +
+      'placeholder="HAPUS FOTO"></label>' +
+      '<button class="tbl bahaya lebar" onclick="jalankanPangkasFoto()">' +
+      '🗑️ Kosongkan ' + rp(r.jumlah) + ' foto</button>';
+  }).catch(function (e) {
+    $('hasilPangkasFoto').innerHTML = '<div class="spanduk merah"><span>⚠️</span>' +
+      '<span>' + esc(e.message) + '</span></div>';
+  });
+}
+
+function jalankanPangkasFoto() {
+  var konfirmasi = $('pangkasKonfirmasi') ? $('pangkasKonfirmasi').value.trim() : '';
+  if (konfirmasi !== 'HAPUS FOTO') {
+    toast('Ketik HAPUS FOTO pada kotak konfirmasi.', 'galat');
+    return;
+  }
+  $('hasilPangkasFoto').innerHTML = '<div class="spanduk biru">' +
+    '<span class="muat"></span><span>Mengosongkan…</span></div>';
+
+  panggil('pangkas_foto', {
+    lembar: $('pangkasLembar').value,
+    simpanTerbaru: angka($('pangkasSisa').value, 3),
+    konfirmasi: konfirmasi
+  }).then(function (r) {
+    $('hasilPangkasFoto').innerHTML = '<div class="spanduk hijau"><span>✅</span>' +
+      '<span>' + esc(r.pesan) + '</span></div>';
+    toast(r.pesan, 'sukses');
+    _ukuran.data = null;
+  }).catch(function (e) {
+    $('hasilPangkasFoto').innerHTML = '<div class="spanduk merah"><span>⚠️</span>' +
+      '<span>' + esc(e.message) + '</span></div>';
+  });
+}
+
+/* ------------------------------------------------------------
+   PANGKAS DATA SEMENTARA
+   ------------------------------------------------------------ */
+
+function pratinjauPangkasSementara() {
+  var hari = angka($('pangkasHari').value, 90);
+  $('hasilPangkasSementara').innerHTML = '<div class="spanduk biru">' +
+    '<span class="muat"></span><span>Menghitung…</span></div>';
+
+  panggil('pangkas_sementara', { simpanHari: hari, pratinjau: true })
+    .then(function (r) {
+      if (!r.total) {
+        $('hasilPangkasSementara').innerHTML =
+          '<div class="spanduk kuning"><span>📭</span><span>' + esc(r.pesan) +
+          '</span></div>';
+        return;
+      }
+      var html = '<div class="spanduk biru"><span>🧹</span><span>' + esc(r.pesan) +
+        ' Lebih tua dari ' + esc(r.batas) + '.</span></div>' +
+        '<div class="gulir"><table><thead><tr><th>Jenis</th>' +
+        '<th class="angka">Baris</th></tr></thead><tbody>';
+      for (var i = 0; i < r.rincian.length; i++) {
+        html += '<tr><td>' + esc(r.rincian[i].label) + '</td>' +
+          '<td class="angka">' + rp(r.rincian[i].baris) + '</td></tr>';
+      }
+      html += '</tbody></table></div>' +
+        '<button class="tbl bahaya lebar" onclick="jalankanPangkasSementara()">' +
+        '🧹 Buang ' + rp(r.total) + ' baris</button>';
+      $('hasilPangkasSementara').innerHTML = html;
+    }).catch(function (e) {
+      $('hasilPangkasSementara').innerHTML = '<div class="spanduk merah">' +
+        '<span>⚠️</span><span>' + esc(e.message) + '</span></div>';
+    });
+}
+
+function jalankanPangkasSementara() {
+  var hari = angka($('pangkasHari').value, 90);
+  /* Tidak diminta ketikan konfirmasi: yang dibuang hanya prakiraan cuaca
+     lewat, bacaan sensor lama, dan catatan perubahan — tidak ada angka
+     usaha maupun data pribadi di dalamnya. Menuntut ketikan untuk
+     tindakan seringan ini justru melatih orang mengetik tanpa membaca. */
+  konfirmasi('Buang data sementara?',
+    'Prakiraan cuaca, bacaan sensor, dan catatan perubahan yang lebih tua dari ' +
+    hari + ' hari akan dibuang. Laporan dan catatan usaha tidak terpengaruh.',
+    function () {
+      $('hasilPangkasSementara').innerHTML = '<div class="spanduk biru">' +
+        '<span class="muat"></span><span>Membuang…</span></div>';
+      panggil('pangkas_sementara', { simpanHari: hari }).then(function (r) {
+        $('hasilPangkasSementara').innerHTML = '<div class="spanduk hijau">' +
+          '<span>✅</span><span>' + esc(r.pesan) + '</span></div>';
+        toast(r.pesan, 'sukses');
+        _ukuran.data = null;
+        muatData(true);
+      }).catch(function (e) {
+        $('hasilPangkasSementara').innerHTML = '<div class="spanduk merah">' +
+          '<span>⚠️</span><span>' + esc(e.message) + '</span></div>';
+      });
+    }, 'Buang', true);
+}
 
 </script>
 </body>

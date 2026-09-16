@@ -6,7 +6,7 @@
    cache dan mengira aplikasi tidak diperbarui.
    ============================================================ */
 
-var CACHE_VERSION = 'tanipintar-v14';
+var CACHE_VERSION = 'tanipintar-v15';
 
 /* config.js SENGAJA tidak ada di daftar ini.
    Berkas itu berisi URL Web App yang bisa berubah kapan saja;
