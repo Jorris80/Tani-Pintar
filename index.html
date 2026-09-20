@@ -1256,6 +1256,21 @@ html[data-mode="gelap"] .spanduk.hijau{background:#22301F;border-color:#3E5B3A;c
    terlihat sama sekali meski kelasnya sudah benar. */
 .gulirNav.navUtama>.panahGulir{z-index:890}
 
+/* ---- Lampiran foto pada TaniBot ---- */
+.lampiranChat{
+  display:flex;align-items:center;gap:10px;margin-top:8px;padding:8px;
+  background:var(--latar);border:1px solid var(--garis);border-radius:11px;
+}
+.lampiranChat>img{width:54px;height:54px;object-fit:cover;border-radius:9px;
+  flex:0 0 auto;cursor:zoom-in}
+.lampiranChat .isi{flex:1;min-width:0;font-size:.8rem}
+.lampiranChat .isi small{display:block;color:var(--redup);font-size:.72rem;
+  margin-top:2px;line-height:1.5}
+.gel img.fotoGel{
+  display:block;max-width:100%;width:180px;border-radius:9px;margin-bottom:6px;
+  cursor:zoom-in;
+}
+
 /* ---- Pemilih ikon komoditas ---- */
 .pratinjauIkon{
   display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:8px;
@@ -1432,8 +1447,8 @@ if ('serviceWorker' in navigator) {
 <script>
 
 /* Versi antarmuka. HARUS naik bersama APP_VERSI di Code.gs. */
-var VERSI_KLIEN = '1.12.0';
-var TANGGAL_RILIS_KLIEN = '2026-09-11';
+var VERSI_KLIEN = '1.13.0';
+var TANGGAL_RILIS_KLIEN = '2026-09-13';
 
 /* ============================================================
    TaniPintar — inti aplikasi
@@ -1600,7 +1615,7 @@ function modeGas() {
 }
 
 function urlGas() {
-  return (window.TANIPINTAR_CONFIG && window.TANIPINTAR_CONFIG.gasUrl) || 'https://script.google.com/macros/s/AKfycbwSbDs7R-Z2FS38FMsDCD96Q9fgwFUBXXu1UePNF7BGPqopL5VBDpcklPviXMxjVvdp/exec';
+  return (window.TANIPINTAR_CONFIG && window.TANIPINTAR_CONFIG.gasUrl) || '';
 }
 
 /**
@@ -5971,15 +5986,24 @@ function tabTaniBot() {
     'petak, komoditas, jadwal pupuk, dan riwayat panen — sehingga jawabannya menyesuaikan ' +
     'kondisi nyata di lapangan.</p>' +
     '<div id="chatKotak" class="chat">' + gambarChat() + '</div>' +
+    '<div id="chatLampiran">' + gambarLampiranChat() + '</div>' +
     '<div class="baris takCetak" style="margin-top:8px">' +
+    '<button class="tbl sekunder" onclick="lampirkanFotoChat(true)" ' +
+    'title="Ambil foto dengan kamera" aria-label="Ambil foto">📷</button>' +
+    '<button class="tbl sekunder" onclick="lampirkanFotoChat(false)" ' +
+    'title="Pilih foto dari galeri" aria-label="Pilih foto">🖼️</button>' +
     '<input type="text" id="chatMasuk" placeholder="Tanyakan apa saja tentang kebun Anda…" ' +
-    'onkeydown="if(event.key===\'Enter\')kirimChat()" style="flex:1">' +
+    'enterkeyhint="send" onkeydown="if(tekanEnter(event))kirimChat()" style="flex:1">' +
     '<button class="tbl" onclick="kirimChat()" id="chatKirim">Kirim</button></div>' +
     '<div class="baris takCetak" style="margin-top:8px;flex-wrap:wrap">' +
-    saranChat('Kapan waktu terbaik memupuk petak saya?') +
-    saranChat('Petak mana yang paling menguntungkan?') +
-    saranChat('Bagaimana cara mengatasi daun menguning?') +
-    saranChat('Apa yang sebaiknya saya tanam setelah panen ini?') +
+    (_fotoChat
+      ? saranChat('Tanaman ini kekurangan hara apa?') +
+        saranChat('Hama atau penyakit apa ini?') +
+        saranChat('Apakah daun ini masih sehat?')
+      : saranChat('Kapan waktu terbaik memupuk petak saya?') +
+        saranChat('Petak mana yang paling menguntungkan?') +
+        saranChat('Bagaimana cara mengatasi daun menguning?') +
+        saranChat('Apa yang sebaiknya saya tanam setelah panen ini?')) +
     '</div></div>';
 
   if (!S.daring) {
@@ -5987,6 +6011,53 @@ function tabTaniBot() {
       'TaniBot membutuhkan sambungan internet. Riwayat percakapan tetap tersimpan.</span></div>';
   }
   return html;
+}
+
+/* Foto yang sedang dilampirkan ke pesan berikutnya. */
+var _fotoChat = null;
+
+/**
+ * Melampirkan foto ke pertanyaan berikutnya.
+ *
+ * Foto diperkecil dengan rutin yang sama seperti foto kebun — bukan
+ * karena harus muat di satu sel Spreadsheet (foto chat tidak disimpan
+ * ke lembar), melainkan supaya pengirimannya tidak memakan waktu dan
+ * kuota data yang tidak perlu di jaringan desa.
+ */
+function lampirkanFotoChat(pakaiKamera) {
+  if (!S.daring) {
+    toast('Analisis foto memerlukan sambungan internet.', 'galat');
+    return;
+  }
+  bukaPemilihBerkas({ kamera: pakaiKamera }, function (berkas) {
+    toast('Memperkecil foto…');
+    kecilkanGambar(berkas[0], 1280, function (dataUrl, info) {
+      _fotoChat = dataUrl;
+      render();
+      setTimeout(function () {
+        var el = $('chatMasuk');
+        if (el) el.focus();
+      }, 60);
+      toast(pesanPemampatan(info));
+    });
+  });
+}
+
+function buangFotoChat() {
+  _fotoChat = null;
+  render();
+}
+
+function gambarLampiranChat() {
+  if (!_fotoChat) return '';
+  return '<div class="lampiranChat takCetak">' +
+    '<img src="' + esc(_fotoChat) + '" alt="Foto yang akan dikirim" ' +
+    'onclick="bukaGaleri([{fotoUrl:_fotoChat,judul:\'Foto untuk dianalisis\'}],0)">' +
+    '<div class="isi"><b>Foto siap dikirim</b>' +
+    '<small>Tuliskan apa yang ingin Anda tanyakan tentang foto ini — misalnya ' +
+    'kekurangan hara, hama, atau penyakit.</small></div>' +
+    '<button type="button" class="tbl sekunder kecil" onclick="buangFotoChat()">' +
+    'Buang</button></div>';
 }
 
 function saranChat(teks) {
@@ -6012,9 +6083,31 @@ function gambarChat() {
   for (var i = 0; i < _chatRiwayat.length; i++) {
     var p = _chatRiwayat[i];
     html += '<div class="gel ' + (p.peran === 'pengguna' ? 'saya' : 'bot') + '">' +
-      esc(p.teks).replace(/\n/g, '<br>') + '</div>';
+      (p.foto
+        ? '<img class="fotoGel" src="' + esc(p.foto) + '" alt="Foto terkirim" ' +
+          'onclick="bukaGaleri([{fotoUrl:' + jsAtr(p.foto) +
+          ',judul:\'Foto yang dianalisis\'}],0)">'
+        : '') +
+      teksChat(p.teks) + '</div>';
   }
   return html;
+}
+
+/**
+ * Menyiapkan teks jawaban untuk ditampilkan.
+ *
+ * Model bahasa lazim memakai penekanan gaya markdown — *begini* atau
+ * **begini**. Tanpa diterjemahkan, tanda bintangnya muncul mentah dan
+ * jawaban terlihat seperti keluaran mentah mesin, bukan penjelasan.
+ *
+ * Hanya penebalan yang diterjemahkan, dan SELALU setelah esc() supaya
+ * isi jawaban tidak pernah bisa menyisipkan HTML ke halaman.
+ */
+function teksChat(teks) {
+  var aman = esc(teks);
+  aman = aman.replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
+  aman = aman.replace(/\*([^*\n]+)\*/g, '<b>$1</b>');
+  return aman.replace(/\n/g, '<br>');
 }
 
 function gulirChatKeBawah() {
@@ -6026,11 +6119,19 @@ function kirimChat() {
   var el = $('chatMasuk');
   if (!el) return;
   var teks = String(el.value || '').trim();
-  if (!teks) return;
+  /* Foto tanpa pertanyaan tetap boleh dikirim — pengguna yang bingung
+     justru sering tidak tahu harus bertanya apa. */
+  if (!teks && !_fotoChat) return;
   if (!S.daring) { toast('TaniBot memerlukan sambungan internet.', 'galat'); return; }
 
-  _chatRiwayat.push({ peran: 'pengguna', teks: teks });
+  var fotoKirim = _fotoChat;
+  if (!teks && fotoKirim) teks = 'Tolong periksa foto tanaman ini.';
+
+  _chatRiwayat.push({ peran: 'pengguna', teks: teks, foto: fotoKirim });
+  _fotoChat = null;
   el.value = '';
+  var wadahLampiran = $('chatLampiran');
+  if (wadahLampiran) wadahLampiran.innerHTML = '';
   var kotak = $('chatKotak');
   kotak.innerHTML = gambarChat() +
     '<div class="gel bot" id="chatTunggu"><span class="muat"></span> Mengetik…</div>';
@@ -6038,14 +6139,22 @@ function kirimChat() {
   var tblKirim = $('chatKirim');
   if (tblKirim) tblKirim.disabled = true;
 
+  /* Riwayat dikirim TANPA foto: mengirim ulang setiap gambar pada tiap
+     pertanyaan berikutnya akan membengkakkan permintaan berkali-kali
+     lipat, dan model hanya perlu melihat foto yang sedang ditanyakan. */
   var riwayatKirim = _chatRiwayat.slice(-10).map(function (p) {
     return { peran: p.peran, teks: p.teks };
   });
 
-  panggil('ai_chat', { pesan: teks, riwayat: riwayatKirim })
+  panggil('ai_chat', { pesan: teks, riwayat: riwayatKirim, fotoBase64: fotoKirim })
     .then(function (r) {
       _chatRiwayat.push({ peran: 'bot', teks: r.balasan });
-      simpanLokal(LS.chat, _chatRiwayat.slice(-40));
+      /* Foto tidak ikut disimpan ke penyimpanan peramban: empat puluh
+         pesan berisi gambar akan melampaui batas localStorage dan
+         membuat seluruh riwayat gagal tersimpan. */
+      simpanLokal(LS.chat, _chatRiwayat.slice(-40).map(function (p) {
+        return { peran: p.peran, teks: p.teks };
+      }));
     })
     .catch(function (e) {
       _chatRiwayat.push({ peran: 'bot', teks: '⚠️ ' + e.message });
@@ -9642,6 +9751,12 @@ function bagianVersi() {
      daftar perubahan kode. Pengguna perlu tahu apa yang berubah bagi
      dirinya, bukan nama fungsi yang diperbaiki. */
   html += '<div class="kartu"><h3>Riwayat perubahan</h3>' +
+    catatanVersi('1.13.0', '13 September 2026', [
+      'TaniBot dapat menganalisis foto — kekurangan hara, hama, atau penyakit',
+      'Foto dapat diambil langsung dari kamera atau dipilih dari galeri',
+      'Jawaban memberi beberapa kemungkinan beserta keyakinannya, bukan satu ' +
+        'jawaban tunggal yang seolah pasti'
+    ]) +
     catatanVersi('1.12.0', '11 September 2026', [
       'Pemantau ukuran data: kuota sel, jumlah foto, dan isi tiap lembar',
       'Arsip tahunan — memindahkan catatan satu tahun ke berkas Spreadsheet ' +
