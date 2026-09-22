@@ -1447,8 +1447,8 @@ if ('serviceWorker' in navigator) {
 <script>
 
 /* Versi antarmuka. HARUS naik bersama APP_VERSI di Code.gs. */
-var VERSI_KLIEN = '1.13.0';
-var TANGGAL_RILIS_KLIEN = '2026-09-13';
+var VERSI_KLIEN = '1.14.0';
+var TANGGAL_RILIS_KLIEN = '2026-09-22';
 
 /* ============================================================
    TaniPintar — inti aplikasi
@@ -2889,7 +2889,7 @@ var TAB = [
   { k: 'kalender', n: 'Panen', ik: '📅' },
   { k: 'keuangan', n: 'Keuangan', ik: '💰' },
   { k: 'pupuk', n: 'Pupuk', ik: '🧪' },
-  { k: 'kerusakan', n: 'Hama', ik: '🐛' },
+  { k: 'kerusakan', n: 'Gangguan', ik: '🌿' },
   { k: 'aktivitas', n: 'Aktivitas', ik: '📋' },
   { k: 'sensor', n: 'Sensor', ik: '📡' },
   { k: 'stok', n: 'Stok', ik: '📦' },
@@ -5235,19 +5235,40 @@ function tabKerusakan() {
   var rugiTotal = 0;
   laporan.forEach(function (r) { rugiTotal += angka(r.perkiraanRugiRp); });
 
-  var html = '<div class="kisi kisi3" style="margin-bottom:12px">' +
-    kartuStat('🐛', aktif.length, 'Laporan Aktif', 'Perlu ditindaklanjuti') +
-    kartuStat('📋', laporan.length, 'Total Laporan', '') +
-    kartuStat('💔', 'Rp ' + rpSingkat(rugiTotal), 'Perkiraan Kerugian', '') + '</div>';
+  var perKategori = { Hama: 0, Penyakit: 0, 'Defisiensi Hara': 0,
+                      'Belum dipastikan': 0 };
+  aktif.forEach(function (r) {
+    var k = r.kategori || 'Belum dipastikan';
+    if (perKategori[k] === undefined) k = 'Belum dipastikan';
+    perKategori[k]++;
+  });
+
+  var html = '<div class="kisi kisi4" style="margin-bottom:12px">' +
+    kartuStat('🐛', perKategori['Hama'], 'Hama Aktif', 'Perlu dikendalikan') +
+    kartuStat('🦠', perKategori['Penyakit'], 'Penyakit Aktif',
+              'Putus penularannya') +
+    kartuStat('🍂', perKategori['Defisiensi Hara'], 'Defisiensi Hara',
+              'Perbaiki pemupukan') +
+    kartuStat('💔', 'Rp ' + rpSingkat(rugiTotal), 'Perkiraan Kerugian',
+              laporan.length + ' laporan') + '</div>';
+
+  if (perKategori['Belum dipastikan'] > 0) {
+    html += '<div class="spanduk kuning"><span>❓</span><span>' +
+      '<b>' + perKategori['Belum dipastikan'] + ' laporan belum dipastikan ' +
+      'jenisnya</b>Penanganan hama, penyakit, dan kekurangan hara berbeda sama ' +
+      'sekali — menyemprot pestisida untuk masalah yang sebenarnya kekurangan ' +
+      'magnesium hanya menambah biaya tanpa mengubah gejalanya. Buka laporannya ' +
+      'lalu tetapkan jenisnya, atau minta diagnosis.</span></div>';
+  }
 
   html += '<div class="kartu"><div class="baris" style="margin-bottom:8px">' +
-    '<h3 style="margin:0">🐛 Laporan Kerusakan Tanaman</h3>' +
+    '<h3 style="margin:0">🌿 Hama, Penyakit &amp; Defisiensi Hara</h3>' +
     (bolehUbah() ? '<button class="tbl kecil kanan" onclick="formKerusakan()">+ Lapor</button>'
       : '') + '</div>';
 
   if (!laporan.length) {
-    html += '<div class="kosong"><span class="ik">🌿</span>Belum ada laporan kerusakan. ' +
-      'Semoga kebun tetap sehat.</div>';
+    html += '<div class="kosong"><span class="ik">🌿</span>Belum ada laporan ' +
+      'gangguan tanaman. Semoga kebun tetap sehat.</div>';
   } else {
     for (var i = 0; i < laporan.length; i++) {
       html += kartuKerusakan(laporan[i]);
@@ -5256,12 +5277,30 @@ function tabKerusakan() {
   return html + '</div>';
 }
 
+/* Ikon dibedakan per jenis supaya sekilas terlihat mana yang butuh
+   pengendalian hama dan mana yang sebenarnya soal pemupukan. */
+function ikonKategori(kategori) {
+  if (kategori === 'Hama') return '🐛';
+  if (kategori === 'Penyakit') return '🦠';
+  if (kategori === 'Defisiensi Hara') return '🍂';
+  return '❓';
+}
+
+function lencanaKategori(kategori) {
+  var k = kategori || 'Belum dipastikan';
+  var warna = k === 'Hama' ? 'kuning'
+    : (k === 'Penyakit' ? 'merah' : (k === 'Defisiensi Hara' ? 'biru' : 'abu'));
+  return '<span class="lencana ' + warna + '" style="font-size:.62rem">' +
+    esc(k) + '</span>';
+}
+
 function kartuKerusakan(r) {
   var warna = r.tingkat === 'Kritis / Puso' ? 'merah'
     : (r.tingkat === 'Berat' ? 'merah' : (r.tingkat === 'Sedang' ? 'kuning' : 'abu'));
   var html = '<div class="item"><div class="ikon">' +
-    (r.status === 'active' ? '🐛' : '✅') + '</div><div class="isi">' +
+    (r.status === 'active' ? ikonKategori(r.kategori) : '✅') + '</div><div class="isi">' +
     '<b>' + esc(r.judulGejala) + '</b>' + (r._menunggu ? ' ⏳' : '') +
+    ' ' + lencanaKategori(r.kategori) +
     '<small>' + esc(namaPetak(r.petakId)) + ' · ' + esc(r.komoditas || '-') + ' · ' +
     tglIndo(r.tanggal, true) + '</small>' +
     '<small>' + esc(String(r.deskripsi || '').substring(0, 130)) +
@@ -5360,10 +5399,17 @@ function mintaDiagnosa(id) {
   }
   panggil('ai_diagnosa', {
     komoditas: r.komoditas, judulGejala: r.judulGejala, deskripsi: r.deskripsi,
-    fotoBase64: r.fotoUrl
+    fotoBase64: r.fotoUrl, kategori: r.kategori
   }).then(function (hasil) {
     var salinan = JSON.parse(JSON.stringify(r));
     salinan.diagnosaAi = hasil.diagnosa;
+    /* Kategori hasil diagnosis dipakai HANYA bila pelapor belum
+       memastikannya sendiri. Pengamatan orang yang berdiri di depan
+       tanamannya lebih dapat dipercaya daripada tebakan dari teks. */
+    if (hasil.diagnosa && hasil.diagnosa.kategori &&
+        (!r.kategori || r.kategori === 'Belum dipastikan')) {
+      salinan.kategori = hasil.diagnosa.kategori;
+    }
     // Sumber ikut disimpan supaya pembaca berikutnya tahu angka keyakinan itu
     // berasal dari analisis AI atau sekadar pencocokan kata kunci bawaan.
     salinan.diagnosaAi.sumber = hasil.sumber;
@@ -5811,21 +5857,68 @@ function laporanStok() {
    curahHujanMm, kelembapan, anginKmh, peluangHujan, sumber
    ============================================================ */
 
+/* Petak yang sedang ditampilkan prakiraannya. Kosong berarti prakiraan
+   umum, dari petak pertama yang punya koordinat. */
+var _cuacaPetak = '';
+
 function tabCuaca() {
   var cuaca = S.data.cuaca || [];
+  var berkoordinat = (S.data.petak || []).filter(function (p) {
+    return angka(p.pusatLat);
+  });
+
+  /* Bila belum ada pilihan, dibuka pada petak yang prakiraannya paling
+     akhir diambil — bukan petak pertama menurut abjad. Yang baru saja
+     dilihat orang hampir selalu yang ingin dilihatnya lagi. */
+  if (!_cuacaPetak && cuaca.length) {
+    var terbaru = cuaca.slice().sort(function (a, b) {
+      return String(b.diperbaruiPada || '') < String(a.diperbaruiPada || '') ? -1 : 1;
+    })[0];
+    if (terbaru && terbaru.petakId) _cuacaPetak = String(terbaru.petakId);
+  }
+
   var html = '<div class="kartu"><div class="baris" style="margin-bottom:8px">' +
     '<h3 style="margin:0">🌦️ Prakiraan Cuaca</h3>' +
     '<button class="tbl kecil kanan takCetak" onclick="ambilCuaca()">🔄 Perbarui</button>' +
     '</div>';
 
+  if (berkoordinat.length) {
+    html += '<label class="ruas takCetak"><span class="nama">Prakiraan untuk petak</span>' +
+      '<select onchange="gantiPetakCuaca(this.value)">' +
+      '<option value="">— seluruh kebun (petak pertama) —</option>';
+    for (var b = 0; b < berkoordinat.length; b++) {
+      html += '<option value="' + esc(berkoordinat[b].id) + '"' +
+        (String(_cuacaPetak) === String(berkoordinat[b].id) ? ' selected' : '') + '>' +
+        esc(berkoordinat[b].nama) + '</option>';
+    }
+    html += '</select><span class="bantu">Kebun yang terpisah beberapa kilometer ' +
+      'bisa berbeda hujannya. Pilih petaknya, lalu tekan Perbarui.</span></label>';
+  } else {
+    html += '<div class="spanduk kuning"><span>📍</span><span>' +
+      '<b>Belum ada petak berbatas</b>Prakiraan diambil berdasarkan titik pusat ' +
+      'petak. Gambar dulu batas petak di WebGIS agar ramalannya sesuai lokasi ' +
+      'kebun Anda.</span></div>';
+  }
+
   var hariNi = hariIni();
-  var urut = cuaca.slice().sort(function (a, b) {
+  var urut = cuaca.slice().filter(function (c) {
+    /* Hanya prakiraan milik petak yang dipilih. Sebelum kolom petakId
+       ada, seluruh baris tidak bertanda — baris lama itu ditampilkan
+       pada pilihan "seluruh kebun" supaya tidak hilang begitu saja. */
+    var milik = String(c.petakId || '');
+    return String(c.tanggal) >= hariNi &&
+           (_cuacaPetak ? milik === String(_cuacaPetak) : !milik);
+  }).sort(function (a, b) {
     return String(a.tanggal) < String(b.tanggal) ? -1 : 1;
-  }).filter(function (c) { return String(c.tanggal) >= hariNi; });
+  });
 
   if (!urut.length) {
-    html += '<div class="kosong"><span class="ik">🌤️</span>Belum ada prakiraan tersimpan. ' +
-      'Tekan Perbarui untuk mengambil ramalan 7 hari dari Open-Meteo.</div>';
+    html += '<div class="kosong"><span class="ik">🌤️</span>' +
+      (_cuacaPetak
+        ? 'Belum ada prakiraan untuk petak ini. Tekan Perbarui untuk mengambil ' +
+          'ramalan 7 hari pada titik koordinatnya.'
+        : 'Belum ada prakiraan tersimpan. Tekan Perbarui untuk mengambil ramalan ' +
+          '7 hari dari Open-Meteo.') + '</div>';
   } else {
     html += '<div class="kisi kisi4">';
     for (var i = 0; i < Math.min(urut.length, 8); i++) {
@@ -5918,14 +6011,32 @@ function ikonCuaca(kondisi) {
   return '🌤️';
 }
 
+function gantiPetakCuaca(id) {
+  _cuacaPetak = String(id || '');
+  render();
+  var adaPrakiraan = (S.data.cuaca || []).some(function (c) {
+    return String(c.petakId || '') === _cuacaPetak && String(c.tanggal) >= hariIni();
+  });
+  if (!adaPrakiraan && _cuacaPetak && S.daring) ambilCuaca();
+}
+
 function ambilCuaca() {
   if (!S.daring) { toast('Perbarui cuaca memerlukan sambungan internet.', 'galat'); return; }
-  toast('Mengambil prakiraan…');
+  var p = _cuacaPetak ? petakById(_cuacaPetak) : null;
+  toast(p ? 'Mengambil prakiraan untuk ' + p.nama + '…' : 'Mengambil prakiraan…');
+
   var d = {};
-  if (S.pengaturan.lat && S.pengaturan.lon) {
+  if (_cuacaPetak) {
+    /* Koordinat diambil peladen dari titik pusat petak, bukan dikirim
+       dari sini — supaya angka yang dipakai selalu sama dengan bentuk
+       petak yang tersimpan, bukan salinan lama di perangkat. */
+    d.petakId = _cuacaPetak;
+  } else if (S.pengaturan.lat && S.pengaturan.lon) {
     d.lat = angka(S.pengaturan.lat); d.lng = angka(S.pengaturan.lon);
   }
-  panggil('cuaca_ambil', d).then(function () {
+
+  panggil('cuaca_ambil', d).then(function (r) {
+    if (r && r.petakId) _cuacaPetak = String(r.petakId);
     return muatData();
   }).then(function () {
     toast('Prakiraan cuaca diperbarui.', 'sukses');
@@ -7706,6 +7817,7 @@ function formKerusakan(id) {
   var r = id ? cariById('kerusakan', id) : null;
   var awal = r ? JSON.parse(JSON.stringify(r))
     : { tanggal: hariIni(), tingkat: 'Ringan', status: 'active',
+        kategori: 'Belum dipastikan',
         dilaporkan: (S.pengguna && S.pengguna.nama) || '' };
 
   var ruas = [
@@ -7713,6 +7825,20 @@ function formKerusakan(id) {
     { k: 'petakId', n: 'Petak', t: 'pilih', opsi: opsiPetak('— pilih petak —'),
       onchange: 'isiKomoditasKerusakan()' },
     { k: 'komoditas', n: 'Komoditas', t: 'teks' },
+    { k: 'kategori', n: 'Jenis gangguan', t: 'pilih',
+      opsi: ['Belum dipastikan', 'Hama', 'Penyakit', 'Defisiensi Hara'],
+      help: 'Penanganannya berbeda sama sekali: hama dikendalikan, penyakit ' +
+        'diputus penularannya, kekurangan hara diperbaiki lewat pemupukan. ' +
+        'Bila ragu, biarkan "Belum dipastikan" — menebak lebih merugikan.' },
+    { k: 'x_bantuKategori', t: 'info', warna: 'biru',
+      isi: '<span>🔍</span><span><b>Cara membedakan</b>' +
+        '<b>Hama:</b> ada organismenya atau bekasnya — lubang gigitan, daun ' +
+        'tergulung, kotoran, serangga di balik daun.<br>' +
+        '<b>Penyakit:</b> bercak bertepi jelas, berjamur, busuk berbau, atau layu ' +
+        'meski tanah lembap. Memburuk setelah hujan.<br>' +
+        '<b>Defisiensi hara:</b> warna berubah tanpa luka maupun organisme, ' +
+        'polanya simetris. Gejala di daun tua mengarah ke N, P, K, Mg; di daun ' +
+        'muda ke Ca, B, Fe, S, Zn.</span>' },
     { k: 'judulGejala', n: 'Gejala utama', t: 'teks', wajib: true,
       contoh: 'Bercak hitam pada buah' },
     { k: 'deskripsi', n: 'Pengamatan rinci', t: 'area', baris: 4,
@@ -9751,6 +9877,15 @@ function bagianVersi() {
      daftar perubahan kode. Pengguna perlu tahu apa yang berubah bagi
      dirinya, bukan nama fungsi yang diperbaiki. */
   html += '<div class="kartu"><h3>Riwayat perubahan</h3>' +
+    catatanVersi('1.14.0', '22 September 2026', [
+      'Tab Hama menjadi Gangguan — kini mencakup hama, penyakit, dan ' +
+        'defisiensi hara',
+      'Setiap laporan diberi jenis gangguannya, karena penanganan ketiganya ' +
+        'berbeda sama sekali',
+      'Diagnosis AI ikut menentukan jenisnya dan menolak menyarankan pestisida ' +
+        'untuk kekurangan hara',
+      'Prakiraan cuaca kini per petak, mengikuti titik koordinatnya masing-masing'
+    ]) +
     catatanVersi('1.13.0', '13 September 2026', [
       'TaniBot dapat menganalisis foto — kekurangan hara, hama, atau penyakit',
       'Foto dapat diambil langsung dari kamera atau dipilih dari galeri',
