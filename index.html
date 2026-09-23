@@ -949,7 +949,12 @@ td.angka,th.angka{text-align:right;font-variant-numeric:tabular-nums;white-space
   /* Tombol tutup popup bawaan Leaflet terlalu kecil untuk ibu jari. */
   .leaflet-popup-close-button{width:32px;height:32px;font-size:20px;
     display:flex;align-items:center;justify-content:center}
-  .leaflet-control-zoom a{width:38px;height:38px;line-height:38px;font-size:1.2rem}
+  /* Pemilih .leaflet-touch .leaflet-bar a WAJIB dipakai, bukan sekadar
+     .leaflet-control-zoom a: Leaflet memasang aturannya sendiri dengan
+     kekhususan lebih tinggi (30px), sehingga aturan yang lebih longgar
+     tertimpa tanpa jejak — tombolnya tetap 30px meski kelasnya benar. */
+  .leaflet-touch .leaflet-bar a,
+  .leaflet-control-zoom a{width:42px;height:42px;line-height:42px;font-size:1.3rem}
 }
 html[data-mode="gelap"] .leaflet-container{background:#1E2419}
 /* Label petak: teks gelap berhalo putih, tanpa kotak latar.
@@ -1152,7 +1157,12 @@ html[data-mode="gelap"] .chipPeta.on{background:#26301F}
    sentuh. Pada tetikus, tombol sebesar itu justru terasa kikuk. */
 @media(pointer:coarse){
   .tbl{min-height:44px}
-  .tbl.kecil{min-height:38px;padding:9px 12px}
+  /* "kecil" hanya mengecilkan huruf dan jarak mendatar, BUKAN sasaran
+     sentuhnya. Sebelumnya 38px, dan tombol inilah yang paling banyak
+     dipakai di daftar — pada tab Stok ada dua puluh empat di antaranya.
+     Kerapatan tampilan tidak boleh dibayar dengan ketepatan tekan,
+     apalagi bila salah tekan berarti stok bertambah atau berkurang. */
+  .tbl.kecil{min-height:44px;padding:10px 12px}
   #nav button{min-height:52px}
   input,select,textarea{min-height:44px;font-size:16px}
   /* 16px mencegah iOS memperbesar halaman sendiri saat kotak isian
@@ -1160,6 +1170,43 @@ html[data-mode="gelap"] .chipPeta.on{background:#26301F}
   .modal .kepala button{width:40px;height:40px}
   table td,table th{padding:11px 8px}
   .item{padding:12px 4px}
+  /* Tombol sub-tab sebelumnya hanya 28px — terlalu tipis untuk ibu
+     jari, padahal inilah jalan berpindah antarbagian. */
+  .pil button{min-height:42px;padding:9px 15px}
+  .pil{gap:7px;padding-bottom:5px}
+  /* Kotak centang pada sensus dan pemilihan massal: 16px bawaan
+     peramban nyaris mustahil ditekan dengan tepat sambil berdiri. */
+  input[type=checkbox],input[type=radio]{
+    width:24px;height:24px;min-height:24px;accent-color:var(--utama)}
+  /* Tautan di dalam teks diberi ruang tekan tanpa mengubah alirannya. */
+  .isi a,.spanduk a{padding:2px 0;display:inline-block}
+  /* Tombol berisi ikon saja — pensil ubah pada tabel, panah geser —
+     tingginya sudah cukup tetapi lebarnya tidak. Ibu jari perlu ruang
+     ke samping juga, bukan hanya ke bawah. */
+  /* Tombol di dalam spanduk dipindah ke barisnya sendiri. Sebelumnya ia
+     mengalir di tengah kalimat, sehingga teksnya terpotong menjadi
+     "Ada pembayaran pembeli yang belum [tombol] lunas." — kalimat yang
+     terbelah tombol lebih sulit dibaca daripada kalimat panjang. */
+  .spanduk .tbl{display:block;width:fit-content;margin-top:8px}
+
+  /* Berlaku untuk SEMUA tombol kecil, bukan hanya yang di dalam tabel:
+     tombol ubah berikon pensil ternyata berada di dalam daftar .item,
+     dan pemilih yang mensyaratkan <table> melewatkannya sama sekali.
+     min-width hanya menambah lebar tombol yang memang sempit — tombol
+     berteks sudah lebih lebar dari 44px. */
+  .tbl.kecil{min-width:44px}
+}
+
+/* Layar sangat sempit (320px): kartu statistik dipaksa dua kolom agar
+   angkanya tidak terpotong, dan jarak dirapatkan supaya isi yang
+   penting tetap muat tanpa menggulir berlebihan. */
+@media(max-width:340px){
+  #isi{padding:10px}
+  .kartu{padding:12px}
+  .kisi.kisi3,.kisi.kisi4{grid-template-columns:repeat(2,1fr)}
+  .kartu.statistik .angka,.kotakUkur .nilai{font-size:1.15rem}
+  .tbl.kecil{font-size:.7rem;padding:10px 9px}
+  .pil button{font-size:.72rem;padding:9px 11px}
 }
 
 /* Tablet: ruang layar dipakai untuk menampilkan lebih banyak sekaligus,
@@ -1333,7 +1380,7 @@ button.tombolIkon.terpilih{
   background:linear-gradient(to right,var(--kartu) 60%,transparent)}
 .gulirNav.navUtama>.panahGulir.kanan{
   background:linear-gradient(to left,var(--kartu) 60%,transparent)}
-@media(pointer:coarse){.gulirNav>.panahGulir{width:34px}}
+@media(pointer:coarse){.gulirNav>.panahGulir{width:40px}}
 
 .pil{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
 .pil::-webkit-scrollbar{display:none}
@@ -1447,7 +1494,7 @@ if ('serviceWorker' in navigator) {
 <script>
 
 /* Versi antarmuka. HARUS naik bersama APP_VERSI di Code.gs. */
-var VERSI_KLIEN = '1.14.0';
+var VERSI_KLIEN = '1.14.1';
 var TANGGAL_RILIS_KLIEN = '2026-09-22';
 
 /* ============================================================
@@ -9877,6 +9924,11 @@ function bagianVersi() {
      daftar perubahan kode. Pengguna perlu tahu apa yang berubah bagi
      dirinya, bukan nama fungsi yang diperbaiki. */
   html += '<div class="kartu"><h3>Riwayat perubahan</h3>' +
+    catatanVersi('1.14.1', '23 September 2026', [
+      'Tombol dan menu diperbesar agar mudah ditekan dengan ibu jari',
+      'Tata letak dirapikan untuk layar ponsel sempit (320 piksel)',
+      'Kotak centang sensus diperbesar, tombol zoom peta ikut diperbesar'
+    ]) +
     catatanVersi('1.14.0', '22 September 2026', [
       'Tab Hama menjadi Gangguan — kini mencakup hama, penyakit, dan ' +
         'defisiensi hara',
