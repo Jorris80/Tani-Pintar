@@ -1303,6 +1303,14 @@ html[data-mode="gelap"] .spanduk.hijau{background:#22301F;border-color:#3E5B3A;c
    terlihat sama sekali meski kelasnya sudah benar. */
 .gulirNav.navUtama>.panahGulir{z-index:890}
 
+/* ---- Pratinjau lapisan tindih ---- */
+.pratinjauOverlay{
+  border:1px solid var(--garis);border-radius:11px;overflow:hidden;
+  background:var(--latar);margin:8px 0;max-height:220px;
+  display:flex;align-items:center;justify-content:center;
+}
+.pratinjauOverlay>img{max-width:100%;max-height:220px;display:block}
+
 /* ---- Lampiran foto pada TaniBot ---- */
 .lampiranChat{
   display:flex;align-items:center;gap:10px;margin-top:8px;padding:8px;
@@ -1494,8 +1502,8 @@ if ('serviceWorker' in navigator) {
 <script>
 
 /* Versi antarmuka. HARUS naik bersama APP_VERSI di Code.gs. */
-var VERSI_KLIEN = '1.14.1';
-var TANGGAL_RILIS_KLIEN = '2026-09-22';
+var VERSI_KLIEN = '1.15.0';
+var TANGGAL_RILIS_KLIEN = '2026-09-27';
 
 /* ============================================================
    TaniPintar — inti aplikasi
@@ -3665,6 +3673,9 @@ function adaLeaflet() {
 }
 
 function bersihkanPeta() {
+  if (typeof bersihkanOverlayPeta === 'function' && _peta) {
+    try { bersihkanOverlayPeta(); } catch (e) { /* diabaikan */ }
+  }
   if (_peta) {
     try { _peta.remove(); } catch (e) {}
     _peta = null; _lapisanPetak = null; _lapisanDasar = null;
@@ -3805,6 +3816,7 @@ function gambarPeta(idElemen) {
 
   _petaSiap = true;
   pasangKendaliPeta(idElemen, {});
+  if (typeof gambarOverlayDiPeta === 'function') gambarOverlayDiPeta();
   setTimeout(function () { if (_peta) _peta.invalidateSize(); }, 120);
 }
 
@@ -4351,6 +4363,8 @@ function tabPetak() {
     '<button class="tbl sekunder kecil" onclick="unduhGeojson()">⬇️ Ekspor GeoJSON</button>' +
     (bolehKelola() ? '<button class="tbl sekunder kecil" onclick="bukaImporBerkas()">' +
       '⬆️ Impor SHP / KML / GeoJSON</button>' : '') +
+    '<button class="tbl sekunder kecil" onclick="bukaPanelOverlay()">' +
+    '🗺️ Lapisan tindih</button>' +
     '<span style="font-size:.7rem;color:var(--redup)">GeoJSON bisa dibuka di QGIS ' +
     'maupun QField untuk pekerjaan lapangan.</span></div>';
   html += '</div>';
@@ -9924,6 +9938,14 @@ function bagianVersi() {
      daftar perubahan kode. Pengguna perlu tahu apa yang berubah bagi
      dirinya, bukan nama fungsi yang diperbaiki. */
   html += '<div class="kartu"><h3>Riwayat perubahan</h3>' +
+    catatanVersi('1.15.0', '27 September 2026', [
+      'Perbaikan: menggeser foto di keterangan peta tidak lagi menutup ' +
+        'keterangannya — kini berpindah foto seperti seharusnya',
+      'Lapisan tindih peta: menumpangkan gambar atau PDF yang digeoreferensi ' +
+        'di atas peta dasar',
+      'Kepekatan lapisan dapat diatur, dan lapisan dapat disembunyikan ' +
+        'sewaktu-waktu'
+    ]) +
     catatanVersi('1.14.1', '23 September 2026', [
       'Tombol dan menu diperbesar agar mudah ditekan dengan ibu jari',
       'Tata letak dirapikan untuk layar ponsel sempit (320 piksel)',
@@ -11739,7 +11761,73 @@ function gambarPopupGaleri(kunci) {
       '</span>' : '') +
     '</div>' +
     '<small style="display:block;color:var(--redup);font-size:.66rem;margin-top:3px">' +
-    esc(f.judul || '') + ' · ketuk untuk memperbesar</small>';
+    esc(f.judul || '') +
+    (banyak ? ' · geser untuk foto lain' : '') + ' · ketuk untuk memperbesar</small>';
+
+  pasangSentuhPopup(kunci, w);
+}
+
+/**
+ * Menahan sentuhan agar tidak diteruskan ke peta, lalu memasang geseran
+ * untuk berpindah foto.
+ *
+ * Tanpa ini, menggeser jari di atas foto diteruskan ke Leaflet sebagai
+ * perintah menggeser PETA. Petanya bergerak, popup ikut terbawa menjauh,
+ * dan bagi pengguna itu tampak seperti maptip-nya menutup sendiri —
+ * padahal ia hanya berpindah ke luar layar.
+ *
+ * Leaflet sendiri hanya menahan klik dan gulir pada isi popup, tidak
+ * menahan seret; jadi penahanan ini harus dipasang sendiri.
+ */
+function pasangSentuhPopup(kunci, wadah) {
+  var bingkai = wadah.querySelector('.bingkaiPop');
+  if (!bingkai || bingkai._sentuhTerpasang) return;
+  bingkai._sentuhTerpasang = true;
+
+  if (typeof L !== 'undefined' && L.DomEvent) {
+    L.DomEvent.disableClickPropagation(bingkai);
+    L.DomEvent.disableScrollPropagation(bingkai);
+    L.DomEvent.on(bingkai, 'mousedown dblclick contextmenu',
+                  L.DomEvent.stopPropagation);
+  }
+
+  var mulaiX = 0, mulaiY = 0, bergeser = false;
+
+  bingkai.addEventListener('touchstart', function (e) {
+    if (!e.touches || e.touches.length !== 1) return;
+    e.stopPropagation();
+    mulaiX = e.touches[0].clientX;
+    mulaiY = e.touches[0].clientY;
+    bergeser = false;
+  }, { passive: true });
+
+  bingkai.addEventListener('touchmove', function (e) {
+    if (!e.touches || e.touches.length !== 1) return;
+    e.stopPropagation();
+    var dx = e.touches[0].clientX - mulaiX;
+    var dy = e.touches[0].clientY - mulaiY;
+    /* Hanya geseran yang jelas mendatar yang ditahan. Geseran menegak
+       dibiarkan lewat supaya halaman di bawah peta tetap dapat digulir
+       seperti biasa. */
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8) {
+      bergeser = true;
+      if (e.cancelable) e.preventDefault();
+    }
+  }, { passive: false });
+
+  bingkai.addEventListener('touchend', function (e) {
+    e.stopPropagation();
+    if (!bergeser || !e.changedTouches || !e.changedTouches.length) return;
+    var dx = e.changedTouches[0].clientX - mulaiX;
+    /* 35 piksel: cukup jauh untuk membedakan geseran dari ketukan yang
+       jarinya sedikit bergerak, tetapi masih ringan dilakukan dengan
+       ibu jari. */
+    if (Math.abs(dx) < 35) return;
+    /* Ketukan dicegah agar penampil layar penuh tidak ikut terbuka
+       setelah geseran selesai. */
+    if (e.cancelable) e.preventDefault();
+    geserPopupGaleri(kunci, dx < 0 ? 1 : -1);
+  }, { passive: false });
 }
 
 function geserPopupGaleri(kunci, arah) {
@@ -11747,6 +11835,11 @@ function geserPopupGaleri(kunci, arah) {
   if (!st) return;
   st.indeks = (st.indeks + arah + st.daftar.length) % st.daftar.length;
   gambarPopupGaleri(kunci);
+  /* popup.update() SENGAJA TIDAK dipanggil di sini. Ia menggambar ulang
+     isi popup dari untaian HTML aslinya — yang hanya berisi wadah
+     kosong "Memuat foto…" — sehingga galeri yang baru saja disuntikkan
+     justru terhapus, dan popup tampak kehilangan isinya. Ukuran foto
+     seragam, jadi tata letak popup memang tidak perlu dihitung ulang. */
 }
 
 
@@ -13659,6 +13752,574 @@ function jalankanPangkasSementara() {
           '<span>⚠️</span><span>' + esc(e.message) + '</span></div>';
       });
     }, 'Buang', true);
+}
+
+
+/* ============================================================
+   LAPISAN TINDIH PETA (OVERLAY)
+   ============================================================
+   Menumpangkan gambar atau halaman PDF yang digeoreferensi di
+   atas peta dasar — peta lama, rencana blok, peta tanah, atau
+   hasil pemetaan dari pihak lain.
+
+   TENTANG GEOREFERENSI. Aplikasi ini TIDAK membaca koordinat
+   yang tertanam di dalam berkas PDF. Membacanya menuntut
+   penguraian struktur PDF tingkat rendah yang berbeda-beda
+   antarpembuat berkas, dan menebaknya berarti menempatkan
+   seluruh peta di koordinat yang keliru tanpa satu pun tanda
+   bahwa ada yang salah — kekeliruan yang justru paling
+   berbahaya karena tampak meyakinkan.
+
+   Karena itu batas koordinat dimasukkan sendiri, dengan tiga
+   cara: mengetik angkanya, mengambilnya dari batas sebuah
+   petak, atau menariknya langsung di peta.
+   ============================================================ */
+
+var _overlay = { daftar: [], lapisan: {}, memuat: false, siap: false };
+var _pdfSiap = false;
+
+/* ------------------------------------------------------------
+   PEMUATAN DAN PENGGAMBARAN DI PETA
+   ------------------------------------------------------------ */
+
+function muatDaftarOverlay(paksa) {
+  if (_overlay.siap && !paksa) return Promise.resolve(_overlay.daftar);
+  if (!S.daring) return Promise.resolve([]);
+  return panggil('overlay_daftar', {}).then(function (r) {
+    _overlay.daftar = r.overlay || [];
+    _overlay.siap = true;
+    return _overlay.daftar;
+  }).catch(function () { return []; });
+}
+
+/**
+ * Menggambar seluruh lapisan yang aktif ke peta.
+ *
+ * Gambarnya diambil satu per satu dan disimpan di memori selama sesi:
+ * satu lapisan bisa berukuran lebih dari satu megabita, dan mengambil
+ * ulang setiap kali peta digambar ulang akan menghabiskan kuota data
+ * pengguna tanpa alasan.
+ */
+function gambarOverlayDiPeta() {
+  if (!_peta || !adaLeaflet()) return;
+
+  muatDaftarOverlay().then(function (daftar) {
+    for (var i = 0; i < daftar.length; i++) {
+      (function (o) {
+        var aktif = o.aktif !== false && o.aktif !== 'false';
+        var sudah = _overlay.lapisan[o.id];
+
+        if (!aktif) {
+          if (sudah) {
+            try { _peta.removeLayer(sudah); } catch (e) {}
+            delete _overlay.lapisan[o.id];
+          }
+          return;
+        }
+        if (sudah) {
+          try { sudah.setOpacity(angka(o.opasitas, 0.7)); } catch (e) {}
+          return;
+        }
+
+        panggil('overlay_ambil', { id: o.id }).then(function (r) {
+          if (!_peta) return;
+          var batas = [[angka(o.selatan), angka(o.barat)],
+                       [angka(o.utara), angka(o.timur)]];
+          try {
+            var lap = L.imageOverlay(r.data, batas, {
+              opacity: angka(o.opasitas, 0.7),
+              /* Di bawah petak dan penanda, di atas peta dasar: lapisan
+                 ini bahan pembanding, bukan pengganti data sendiri. */
+              zIndex: 250,
+              interactive: false
+            }).addTo(_peta);
+            _overlay.lapisan[o.id] = lap;
+          } catch (e) { /* peta sudah dibongkar */ }
+        }).catch(function (e) {
+          toast('Lapisan "' + o.nama + '" gagal dimuat: ' + e.message, 'galat');
+        });
+      })(daftar[i]);
+    }
+  });
+}
+
+function bersihkanOverlayPeta() {
+  for (var id in _overlay.lapisan) {
+    try { _peta.removeLayer(_overlay.lapisan[id]); } catch (e) {}
+  }
+  _overlay.lapisan = {};
+}
+
+/* ------------------------------------------------------------
+   PANEL PENGELOLAAN
+   ------------------------------------------------------------ */
+
+function bukaPanelOverlay() {
+  if (!S.daring) {
+    toast('Pengelolaan lapisan memerlukan sambungan internet.', 'galat');
+    return;
+  }
+  modalBuka('Lapisan tindih peta',
+    '<div id="isiOverlay"><div class="kosong"><span class="muat"></span>' +
+    'Memuat daftar lapisan…</div></div>');
+
+  muatDaftarOverlay(true).then(function () {
+    var el = $('isiOverlay');
+    if (el) el.innerHTML = gambarPanelOverlay();
+  });
+}
+
+function gambarPanelOverlay() {
+  var html =
+    '<p style="font-size:.85rem;color:var(--redup);line-height:1.7">' +
+    'Menumpangkan peta lama, rencana blok, atau hasil pemetaan dari pihak lain ' +
+    'di atas peta dasar — supaya batas petak yang Anda gambar sendiri dapat ' +
+    'dibandingkan langsung dengan dokumen aslinya.</p>';
+
+  if (!_overlay.daftar.length) {
+    html += '<div class="kosong"><span class="ik">🗺️</span>' +
+      'Belum ada lapisan tindih.</div>';
+  } else {
+    for (var i = 0; i < _overlay.daftar.length; i++) {
+      var o = _overlay.daftar[i];
+      var aktif = o.aktif !== false && o.aktif !== 'false';
+      html += '<div class="item"><div class="ikon">' +
+        (o.jenis === 'pdf' ? '📄' : '🖼️') + '</div><div class="isi">' +
+        '<b>' + esc(o.nama) + '</b>' +
+        '<small>' + (o.lebarPx ? o.lebarPx + '×' + o.tinggiPx + ' piksel · ' : '') +
+        'kepekatan ' + Math.round(angka(o.opasitas, 0.7) * 100) + '%</small>' +
+        (o.catatan ? '<small>' + esc(o.catatan) + '</small>' : '') +
+        '<div class="baris" style="margin-top:6px">' +
+        '<button class="tbl sekunder kecil" onclick="alihkanOverlay(\'' +
+        jsq(o.id) + '\')">' + (aktif ? '👁️ Sembunyikan' : '👁️ Tampilkan') +
+        '</button>' +
+        '<button class="tbl sekunder kecil" onclick="formKepekatanOverlay(\'' +
+        jsq(o.id) + '\')">🎚️ Kepekatan</button>' +
+        (bolehKelola()
+          ? '<button class="tbl bahaya kecil" onclick="hapusOverlay(\'' +
+            jsq(o.id) + '\')">Hapus</button>' : '') +
+        '</div></div></div>';
+    }
+  }
+
+  if (bolehKelola()) {
+    html += '<hr class="pisah">' +
+      '<button class="tbl lebar" onclick="formTambahOverlay()">' +
+      '+ Tambah lapisan (gambar atau PDF)</button>';
+  }
+  return html;
+}
+
+function alihkanOverlay(id) {
+  var o = null;
+  for (var i = 0; i < _overlay.daftar.length; i++) {
+    if (_overlay.daftar[i].id === id) o = _overlay.daftar[i];
+  }
+  if (!o) return;
+  var baru = !(o.aktif !== false && o.aktif !== 'false');
+
+  panggil('overlay_ubah', { id: id, aktif: baru }).then(function () {
+    o.aktif = baru;
+    var el = $('isiOverlay');
+    if (el) el.innerHTML = gambarPanelOverlay();
+    if (!baru && _overlay.lapisan[id]) {
+      try { _peta.removeLayer(_overlay.lapisan[id]); } catch (e) {}
+      delete _overlay.lapisan[id];
+    } else {
+      gambarOverlayDiPeta();
+    }
+  }).catch(function (e) { toast(e.message, 'galat'); });
+}
+
+function formKepekatanOverlay(id) {
+  var o = null;
+  for (var i = 0; i < _overlay.daftar.length; i++) {
+    if (_overlay.daftar[i].id === id) o = _overlay.daftar[i];
+  }
+  if (!o) return;
+
+  var ruas = [
+    { k: 'opasitas', n: 'Kepekatan (5–100%)', t: 'angka',
+      bawaan: Math.round(angka(o.opasitas, 0.7) * 100),
+      help: 'Makin rendah, makin tembus pandang sehingga peta dasar dan batas ' +
+            'petak di bawahnya tetap terlihat.' }
+  ];
+  modalBuka('Kepekatan — ' + o.nama, bentukRuas(ruas, {}), function () {
+    var v = angka(kumpulkanRuas().opasitas, 70) / 100;
+    panggil('overlay_ubah', { id: id, opasitas: v }).then(function () {
+      o.opasitas = v;
+      if (_overlay.lapisan[id]) {
+        try { _overlay.lapisan[id].setOpacity(v); } catch (e) {}
+      }
+      modalTutupLalu(bukaPanelOverlay);
+    }).catch(function (e) { toast(e.message, 'galat'); });
+    return false;
+  });
+}
+
+function hapusOverlay(id) {
+  konfirmasi('Hapus lapisan ini?',
+    'Gambar dan batas koordinatnya dihapus dari Spreadsheet. Berkas asli di ' +
+    'perangkat Anda tidak terpengaruh.',
+    function () {
+      panggil('overlay_hapus', { id: id }).then(function () {
+        if (_overlay.lapisan[id]) {
+          try { _peta.removeLayer(_overlay.lapisan[id]); } catch (e) {}
+          delete _overlay.lapisan[id];
+        }
+        toast('Lapisan dihapus.', 'sukses');
+        modalTutupLalu(bukaPanelOverlay);
+      }).catch(function (e) { toast(e.message, 'galat'); });
+    }, 'Hapus', true);
+}
+
+/* ------------------------------------------------------------
+   MENAMBAH LAPISAN
+   ------------------------------------------------------------ */
+
+var _overlayBaru = null;
+
+function formTambahOverlay() {
+  _overlayBaru = null;
+  modalBuka('Tambah lapisan tindih',
+    '<div class="spanduk biru"><span>📄</span><span>' +
+    '<b>Gambar atau PDF</b>Untuk PDF, halaman pertama yang dipakai. Berkas ' +
+    'diproses di perangkat ini — tidak dikirim ke mana pun sebelum Anda menekan ' +
+    'simpan.</span></div>' +
+    '<div class="tumpuk">' +
+    '<button class="tbl lebar" onclick="pilihBerkasOverlay(\'gambar\')">' +
+    '🖼️ Pilih gambar (PNG / JPG)</button>' +
+    '<button class="tbl lebar" onclick="pilihBerkasOverlay(\'pdf\')">' +
+    '📄 Pilih PDF</button></div>' +
+    '<div class="spanduk kuning"><span>🧭</span><span>' +
+    '<b>Koordinatnya Anda yang menentukan</b>Aplikasi ini tidak membaca ' +
+    'georeferensi yang tertanam di dalam PDF. Menebaknya berarti menempatkan ' +
+    'seluruh peta di tempat yang keliru tanpa tanda apa pun — dan kekeliruan ' +
+    'semacam itu justru paling berbahaya karena tampak meyakinkan. Setelah ' +
+    'berkas dipilih, Anda memasukkan batas koordinatnya.</span></div>' +
+    '<div id="hasilOverlay"></div>');
+}
+
+function pilihBerkasOverlay(jenis) {
+  var opsi = jenis === 'pdf' ? { accept: '.pdf,application/pdf' }
+                             : { accept: 'image/png,image/jpeg' };
+  bukaPemilihBerkas(opsi, function (berkas) {
+    var b = berkas[0];
+    tandaiOverlay('<div class="spanduk biru"><span class="muat"></span>' +
+                  '<span>Memproses berkas…</span></div>');
+    if (jenis === 'pdf') olahPdfOverlay(b);
+    else olahGambarOverlay(b);
+  });
+}
+
+function tandaiOverlay(html) {
+  var el = $('hasilOverlay');
+  if (el) el.innerHTML = html;
+}
+
+/**
+ * Gambar diperkecil agar muat disimpan, tetapi TIDAK sekecil foto
+ * kebun: peta yang hendak dibandingkan harus masih terbaca tulisan
+ * dan garisnya. 2000 piksel sisi terpanjang adalah kompromi antara
+ * keterbacaan dan jumlah potongan yang harus dikirim.
+ */
+function olahGambarOverlay(berkas) {
+  kecilkanGambarBesar(berkas, 2000, function (dataUrl, lebar, tinggi) {
+    siapkanOverlayBaru(dataUrl, lebar, tinggi, 'gambar', berkas.name || '');
+  });
+}
+
+function kecilkanGambarBesar(berkas, sisiMaks, selesai) {
+  function olah(sumber, lebarAsli, tinggiAsli, bersihkan) {
+    var lebar = lebarAsli, tinggi = tinggiAsli;
+    if (lebar > sisiMaks || tinggi > sisiMaks) {
+      if (lebar > tinggi) { tinggi = Math.round(tinggi * sisiMaks / lebar); lebar = sisiMaks; }
+      else { lebar = Math.round(lebar * sisiMaks / tinggi); tinggi = sisiMaks; }
+    }
+    var kanvas = document.createElement('canvas');
+    kanvas.width = lebar; kanvas.height = tinggi;
+    var ktx = kanvas.getContext('2d');
+    ktx.imageSmoothingEnabled = true;
+    if ('imageSmoothingQuality' in ktx) ktx.imageSmoothingQuality = 'high';
+    ktx.drawImage(sumber, 0, 0, lebar, tinggi);
+    if (bersihkan) bersihkan();
+    /* JPEG mutu 0,82: peta bergaris tipis mulai berbayang di bawah itu. */
+    selesai(kanvas.toDataURL('image/jpeg', 0.82), lebar, tinggi);
+  }
+
+  if (typeof createImageBitmap === 'function') {
+    createImageBitmap(berkas).then(function (bmp) {
+      olah(bmp, bmp.width, bmp.height, function () { if (bmp.close) bmp.close(); });
+    }).catch(lewatElemen);
+  } else { lewatElemen(); }
+
+  function lewatElemen() {
+    var url = URL.createObjectURL(berkas);
+    var g = new Image();
+    g.onload = function () {
+      olah(g, g.width, g.height, function () { URL.revokeObjectURL(url); });
+    };
+    g.onerror = function () {
+      URL.revokeObjectURL(url);
+      tandaiOverlay('<div class="spanduk merah"><span>⚠️</span>' +
+                    '<span>Gambar tidak dapat dibaca.</span></div>');
+    };
+    g.src = url;
+  }
+}
+
+/* ------------------------------------------------------------
+   PDF
+   ------------------------------------------------------------ */
+
+/**
+ * Memuat pustaka pembaca PDF, hanya saat benar-benar dipakai.
+ *
+ * Ukurannya sekitar 1,4 MB — hampir tiga kali lipat seluruh aplikasi
+ * ini. Menanamnya di dalam berkas utama berarti setiap pengguna
+ * mengunduhnya pada setiap pembukaan, termasuk yang tidak pernah
+ * membuka lapisan PDF, di jaringan yang tidak selalu baik.
+ */
+function muatPdfJs() {
+  if (_pdfSiap) return Promise.resolve();
+  return new Promise(function (selesai, gagal) {
+    var dasar = modeGas()
+      ? (S.urlAplikasi || '') + '?pustaka=pdfjs'
+      : 'vendor/pdf.min.mjs';
+
+    var skrip = document.createElement('script');
+    skrip.type = 'module';
+    skrip.textContent =
+      'import * as pdfjs from "' + dasar + '";' +
+      'window.pdfjsLib = pdfjs;' +
+      'window.dispatchEvent(new Event("pdfjs-siap"));';
+
+    var selesaiSekali = false;
+    window.addEventListener('pdfjs-siap', function () {
+      if (selesaiSekali) return;
+      selesaiSekali = true;
+      _pdfSiap = true;
+      selesai();
+    });
+    /* Batas waktu diperlukan: kegagalan memuat modul tidak selalu
+       memicu onerror, dan tanpa batas ini pengguna menunggu selamanya
+       pada tulisan "memproses berkas". */
+    setTimeout(function () {
+      if (!selesaiSekali) {
+        gagal(new Error(modeGas()
+          ? 'Pustaka pembaca PDF belum terpasang pada aplikasi ini. Berkas ' +
+            'PdfJs.html dan PdfJsWorker.html perlu ditambahkan ke proyek Apps ' +
+            'Script oleh penyedia — keduanya tidak disertakan secara bawaan ' +
+            'karena berukuran 1,4 MB. Sementara itu, ubahlah PDF menjadi ' +
+            'gambar PNG atau JPG lalu unggah sebagai gambar.'
+          : 'Pustaka pembaca PDF tidak dapat dimuat. Periksa sambungan ' +
+            'internet, lalu coba lagi. Sebagai jalan keluar, ubah PDF menjadi ' +
+            'gambar PNG atau JPG lalu unggah sebagai gambar.'));
+      }
+    }, 25000);
+
+    document.head.appendChild(skrip);
+  });
+}
+
+function olahPdfOverlay(berkas) {
+  muatPdfJs().then(function () {
+    return berkas.arrayBuffer();
+  }).then(function (buf) {
+    var lib = window.pdfjsLib;
+    if (lib.GlobalWorkerOptions) {
+      lib.GlobalWorkerOptions.workerSrc = modeGas()
+        ? (S.urlAplikasi || '') + '?pustaka=pdfjsworker'
+        : 'vendor/pdf.worker.min.mjs';
+    }
+    return lib.getDocument({ data: buf }).promise;
+  }).then(function (dok) {
+    return dok.getPage(1);
+  }).then(function (halaman) {
+    /* Skala dipilih agar sisi terpanjang mendekati 2000 piksel —
+       cukup untuk membaca tulisan pada peta cetak tanpa menghasilkan
+       gambar yang terlalu besar untuk disimpan. */
+    var awal = halaman.getViewport({ scale: 1 });
+    var skala = Math.min(4, 2000 / Math.max(awal.width, awal.height));
+    var vp = halaman.getViewport({ scale: skala });
+
+    var kanvas = document.createElement('canvas');
+    kanvas.width = Math.round(vp.width);
+    kanvas.height = Math.round(vp.height);
+    var ktx = kanvas.getContext('2d');
+    /* Latar putih digambar lebih dulu: PDF berlatar tembus pandang
+       akan menjadi hitam pekat pada JPEG dan petanya tidak terbaca. */
+    ktx.fillStyle = '#ffffff';
+    ktx.fillRect(0, 0, kanvas.width, kanvas.height);
+
+    return halaman.render({ canvasContext: ktx, viewport: vp }).promise
+      .then(function () {
+        siapkanOverlayBaru(kanvas.toDataURL('image/jpeg', 0.82),
+                           kanvas.width, kanvas.height, 'pdf', berkas.name || '');
+      });
+  }).catch(function (e) {
+    tandaiOverlay('<div class="spanduk merah"><span>⚠️</span><span>' +
+      '<b>PDF tidak dapat dibaca</b>' + esc(e.message || '') +
+      '<br><br>Bila berkasnya terkunci sandi atau berupa hasil pindaian yang ' +
+      'sangat besar, ubahlah dulu menjadi gambar PNG atau JPG lalu unggah ' +
+      'sebagai gambar.</span></div>');
+  });
+}
+
+/* ------------------------------------------------------------
+   GEOREFERENSI DAN PENYIMPANAN
+   ------------------------------------------------------------ */
+
+function siapkanOverlayBaru(dataUrl, lebar, tinggi, jenis, namaBerkas) {
+  var potong = Math.ceil(dataUrl.length / 45000);
+  _overlayBaru = { dataUrl: dataUrl, lebar: lebar, tinggi: tinggi,
+                   jenis: jenis, nama: namaBerkas, potong: potong };
+
+  if (potong > 40) {
+    tandaiOverlay('<div class="spanduk merah"><span>⚠️</span><span>' +
+      '<b>Gambar terlalu besar</b>Setelah dimampatkan masih ' +
+      Math.round(dataUrl.length / 1024) + ' KB (' + potong + ' bagian, batas 40). ' +
+      'Perkecil ukuran berkasnya, atau potong bagian peta yang benar-benar ' +
+      'diperlukan saja.</span></div>');
+    return;
+  }
+
+  tandaiOverlay(
+    '<hr class="pisah">' +
+    '<div class="spanduk hijau"><span>✅</span><span><b>Berkas siap</b>' +
+    lebar + '×' + tinggi + ' piksel · ' + Math.round(dataUrl.length / 1024) +
+    ' KB · ' + potong + ' bagian</span></div>' +
+    '<div class="pratinjauOverlay"><img src="' + esc(dataUrl) + '" alt=""></div>' +
+    '<hr class="pisah"><h4>Batas koordinat</h4>' +
+    '<p style="font-size:.82rem;color:var(--redup)">Masukkan koordinat sudut ' +
+    'gambar. Cara termudah: pilih petak yang tergambar di dalamnya, lalu ' +
+    'sesuaikan angkanya.</p>' +
+    pilihPetakUntukBatas() +
+    '<div class="kisi kisi2">' +
+    ruasBatas('ovlUtara', 'Utara (lintang)') +
+    ruasBatas('ovlSelatan', 'Selatan (lintang)') +
+    ruasBatas('ovlTimur', 'Timur (bujur)') +
+    ruasBatas('ovlBarat', 'Barat (bujur)') +
+    '</div>' +
+    '<label class="ruas"><span class="nama">Nama lapisan</span>' +
+    '<input type="text" id="ovlNama" value="' +
+    esc(String(namaBerkas).replace(/\.[^.]+$/, '')) + '"></label>' +
+    '<label class="ruas"><span class="nama">Kepekatan (%)</span>' +
+    '<input type="number" id="ovlOpasitas" value="70" min="5" max="100"></label>' +
+    '<button class="tbl lebar" onclick="simpanOverlayBaru()">' +
+    '💾 Simpan lapisan</button>');
+}
+
+function ruasBatas(id, label) {
+  return '<label class="ruas"><span class="nama">' + esc(label) + '</span>' +
+    '<input type="number" id="' + id + '" step="0.000001" inputmode="decimal">' +
+    '</label>';
+}
+
+function pilihPetakUntukBatas() {
+  var petak = (S.data.petak || []).filter(function (p) {
+    return (p.koordinat || []).length >= 3;
+  });
+  if (!petak.length) return '';
+  var html = '<label class="ruas"><span class="nama">Ambil batas dari petak</span>' +
+    '<select onchange="isiBatasDariPetak(this.value)">' +
+    '<option value="">— pilih petak —</option>';
+  for (var i = 0; i < petak.length; i++) {
+    html += '<option value="' + esc(petak[i].id) + '">' + esc(petak[i].nama) +
+      '</option>';
+  }
+  return html + '</select><span class="bantu">Batas petak dipakai sebagai titik ' +
+    'awal, lalu Anda lebarkan sesuai cakupan gambarnya.</span></label>';
+}
+
+function isiBatasDariPetak(id) {
+  if (!id) return;
+  var p = petakById(id);
+  if (!p || !(p.koordinat || []).length) return;
+
+  var lat = p.koordinat.map(function (t) { return angka(t[0]); });
+  var lng = p.koordinat.map(function (t) { return angka(t[1]); });
+  /* Dilebarkan 20% dari ukuran petak: gambar peta hampir selalu
+     mencakup wilayah lebih luas daripada satu petak, dan memulai dari
+     batas yang persis sama membuat pengguna harus melebarkannya
+     sendiri dari nol. */
+  var dLat = (Math.max.apply(null, lat) - Math.min.apply(null, lat)) * 0.2;
+  var dLng = (Math.max.apply(null, lng) - Math.min.apply(null, lng)) * 0.2;
+
+  $('ovlUtara').value = (Math.max.apply(null, lat) + dLat).toFixed(6);
+  $('ovlSelatan').value = (Math.min.apply(null, lat) - dLat).toFixed(6);
+  $('ovlTimur').value = (Math.max.apply(null, lng) + dLng).toFixed(6);
+  $('ovlBarat').value = (Math.min.apply(null, lng) - dLng).toFixed(6);
+  toast('Batas diisi dari petak ' + p.nama + '. Sesuaikan bila perlu.');
+}
+
+function simpanOverlayBaru() {
+  if (!_overlayBaru) { toast('Pilih berkas terlebih dahulu.', 'galat'); return; }
+  if (!S.daring) { toast('Menyimpan lapisan memerlukan internet.', 'galat'); return; }
+
+  var batas = {
+    utara: angka($('ovlUtara').value, null),
+    selatan: angka($('ovlSelatan').value, null),
+    timur: angka($('ovlTimur').value, null),
+    barat: angka($('ovlBarat').value, null)
+  };
+  if (batas.utara === null || batas.selatan === null ||
+      batas.timur === null || batas.barat === null) {
+    toast('Keempat batas koordinat wajib diisi.', 'galat');
+    return;
+  }
+
+  var item = {
+    nama: $('ovlNama').value || _overlayBaru.nama || 'Lapisan',
+    jenis: _overlayBaru.jenis,
+    utara: batas.utara, selatan: batas.selatan,
+    timur: batas.timur, barat: batas.barat,
+    opasitas: angka($('ovlOpasitas').value, 70) / 100,
+    lebarPx: _overlayBaru.lebar, tinggiPx: _overlayBaru.tinggi,
+    jumlahPotong: _overlayBaru.potong,
+    aktif: true
+  };
+
+  tandaiOverlay('<div class="spanduk biru"><span class="muat"></span>' +
+                '<span>Menyimpan bagian 0 dari ' + _overlayBaru.potong +
+                '…</span></div>');
+
+  panggil('overlay_simpan', { item: item, gantiGambar: true }).then(function (r) {
+    /* Potongan dikirim BERURUTAN, bukan serentak. Apps Script membatasi
+       jumlah permintaan bersamaan, dan pengiriman serentak pada jaringan
+       lemah justru membuat sebagiannya gagal tanpa pola yang jelas. */
+    var data = _overlayBaru.dataUrl;
+    var urut = 0;
+
+    function kirimBerikutnya() {
+      if (urut * 45000 >= data.length) {
+        toast('Lapisan tersimpan.', 'sukses');
+        _overlayBaru = null;
+        _overlay.siap = false;
+        gambarOverlayDiPeta();
+        modalTutupLalu(bukaPanelOverlay);
+        return;
+      }
+      var bagian = data.substring(urut * 45000, (urut + 1) * 45000);
+      panggil('overlay_potong', { overlayId: r.id, urut: urut, data: bagian })
+        .then(function () {
+          urut++;
+          tandaiOverlay('<div class="spanduk biru"><span class="muat"></span>' +
+            '<span>Menyimpan bagian ' + urut + ' dari ' + _overlayBaru.potong +
+            '…</span></div>');
+          kirimBerikutnya();
+        }).catch(function (e) {
+          tandaiOverlay('<div class="spanduk merah"><span>⚠️</span><span>' +
+            '<b>Pengiriman terputus pada bagian ' + (urut + 1) + '</b>' +
+            esc(e.message) + '<br><br>Lapisan tersimpan sebagian dan belum dapat ' +
+            'dipakai. Hapus lapisan itu lalu unggah ulang.</span></div>');
+        });
+    }
+    kirimBerikutnya();
+  }).catch(function (e) {
+    tandaiOverlay('<div class="spanduk merah"><span>⚠️</span><span>' +
+      esc(e.message) + '</span></div>');
+  });
 }
 
 </script>
