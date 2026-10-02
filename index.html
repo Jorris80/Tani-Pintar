@@ -745,6 +745,13 @@ small{font-size:.78rem}
 
 /* ---------- tata letak ---------- */
 #aplikasi{display:flex;min-height:100vh;flex-direction:column}
+/* Menu bawah berposisi tetap, sehingga ia menutupi bagian paling bawah
+   layar. scroll-padding memberi tahu peramban untuk menyisakan ruang
+   itu setiap kali menggulirkan sesuatu ke dalam pandangan — tanpa ini,
+   tombol di ujung bawah halaman tergulir tepat ke balik menu dan tidak
+   dapat ditekan sama sekali. */
+html{scroll-padding-bottom:calc(var(--tinggiNav, 0px) + 16px);
+  scroll-padding-top:calc(var(--tinggiAtas, 0px) + 8px)}
 #atas{
   position:sticky;top:0;z-index:900;background:var(--utama);color:#fff;
   padding:10px 14px;padding-top:calc(10px + env(safe-area-inset-top));
@@ -768,17 +775,40 @@ small{font-size:.78rem}
 }
 #atas button:active{background:rgba(255,255,255,.3)}
 
-#isi{flex:1;padding:14px;max-width:1200px;width:100%;margin:0 auto}
+#isi{flex:1;padding:14px;padding-bottom:calc(14px + var(--tinggiNav, 0px));max-width:1200px;width:100%;margin:0 auto}
 @media(min-width:900px){
   #isi{padding:20px 24px 40px}
 }
 
 /* ---------- navigasi ---------- */
+/* Memakai position:fixed, bukan sticky. Sticky bottom pada susunan ini
+   tidak pernah menempel: nav berada di dalam wadah flex setinggi
+   seluruh halaman, sehingga ia hanya jatuh di ujung bawah dokumen —
+   terukur 1.180 piksel di luar layar. Fixed tidak bergantung pada
+   susunan induknya dan hasilnya pasti. */
+@media(max-width:899px){
+  .gulirNav.navUtama{
+    position:fixed;left:0;right:0;bottom:0;z-index:880;
+    background:var(--kartu);box-shadow:0 -2px 10px rgba(0,0,0,.07);
+  }
+  .gulirNav.navUtama>#nav{position:static;box-shadow:none}
+}
+
 #nav{
   position:sticky;bottom:0;z-index:880;background:var(--kartu);
   border-top:1px solid var(--garis);display:flex;overflow-x:auto;
+  /* Bilah gestur Android dan home indicator iOS menempati bagian paling
+     bawah layar. Tanpa ruang aman ini, tombol menu tertimpa keduanya. */
   padding-bottom:env(safe-area-inset-bottom);scrollbar-width:none;
+  box-shadow:0 -2px 10px rgba(0,0,0,.07);
 }
+/* Lima tujuan utama dibagi rata selebar layar; sisanya dibuka lewat
+   tombol Lainnya. Nav bawah bekerja baik pada empat sampai lima
+   tujuan — delapan belas tab yang harus digeser mendatar sama
+   repotnya di bawah maupun di atas, hanya berpindah tempat. */
+#nav.limaTab button{flex:1 1 0;min-width:0}
+#nav.limaTab button .nm{
+  max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #nav::-webkit-scrollbar{display:none}
 #nav button{
   flex:0 0 auto;min-width:72px;background:none;border:0;padding:8px 10px 9px;
@@ -788,10 +818,32 @@ small{font-size:.78rem}
 }
 #nav button .ik{font-size:1.15rem;line-height:1}
 #nav button.aktif{color:var(--utama2);border-top-color:var(--utama2)}
+/* Titik penanda saat tab yang aktif berada di dalam daftar Lainnya —
+   tanpa ini pengguna kehilangan petunjuk sedang berada di mana. */
+#nav button.adaIsiAktif::after{
+  content:'';position:absolute;top:5px;right:calc(50% - 16px);
+  width:7px;height:7px;border-radius:50%;background:var(--utama2)}
+#nav button{position:relative}
+
+/* Lembar daftar tab selebihnya. */
+.kisiTab{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+@media(min-width:420px){.kisiTab{grid-template-columns:repeat(4,1fr)}}
+.kisiTab button{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:6px;padding:14px 6px;border:1px solid var(--garis);border-radius:13px;
+  background:var(--kartu);font-family:inherit;font-size:.72rem;font-weight:700;
+  color:var(--tinta);cursor:pointer;min-height:76px;
+}
+.kisiTab button .ik{font-size:1.5rem;line-height:1}
+.kisiTab button.aktif{
+  background:var(--utama);color:#fff;border-color:var(--utama)}
 @media(min-width:900px){
+  /* Di layar lebar, ibu jari bukan lagi penentu dan ruang mendatar
+     berlimpah: seluruh tab ditampilkan sekaligus di atas. */
   #nav{position:sticky;top:0;flex-wrap:wrap;justify-content:center;
-    border-top:0;border-bottom:1px solid var(--garis);order:-1}
+    border-top:0;border-bottom:1px solid var(--garis);order:-1;box-shadow:none}
   #nav button{min-width:88px}
+  #nav.limaTab button{flex:0 0 auto;min-width:88px}
 }
 
 /* ---------- kartu & komponen ---------- */
@@ -1044,7 +1096,12 @@ html[data-mode="gelap"] .chipPeta.on{background:#26301F}
   cursor:pointer;padding:0 4px;line-height:1}
 
 #toast{
-  position:fixed;left:50%;transform:translateX(-50%);bottom:74px;z-index:5000;
+  /* Diangkat setinggi nav yang SEBENARNYA, diukur saat halaman
+     digambar. Angka tetap 74px meleset di perangkat yang bilah
+     gesturnya lebih tinggi — pesannya tertutup menu persis saat
+     pengguna perlu membacanya. */
+  position:fixed;left:50%;transform:translateX(-50%);
+  bottom:calc(var(--tinggiNav, 0px) + 16px);z-index:5000;
   background:var(--tinta);color:var(--latar);padding:10px 16px;border-radius:12px;
   font-size:.84rem;font-weight:600;max-width:90vw;text-align:center;
   box-shadow:0 6px 20px rgba(0,0,0,.25);display:none;
@@ -1452,10 +1509,14 @@ button.tombolIkon.terpilih{
       <button id="tblProfil">Masuk</button>
     </div>
   </header>
-  <nav id="nav"></nav>
   <main id="isi">
     <div class="kosong"><span class="ik">🌾</span>Memuat aplikasi…</div>
   </main>
+  <!-- Nav ditempatkan SETELAH main. Sebelumnya ia berada di atas main,
+       sehingga position:sticky;bottom:0 tidak pernah berpengaruh dan
+       menunya tetap menempel di atas layar — jauh dari jangkauan ibu
+       jari pada ponsel layar besar. -->
+  <nav id="nav"></nav>
 </div>
 <div id="toast"></div>
 <div id="zoomFoto">
@@ -1502,8 +1563,8 @@ if ('serviceWorker' in navigator) {
 <script>
 
 /* Versi antarmuka. HARUS naik bersama APP_VERSI di Code.gs. */
-var VERSI_KLIEN = '1.15.0';
-var TANGGAL_RILIS_KLIEN = '2026-09-27';
+var VERSI_KLIEN = '1.16.0';
+var TANGGAL_RILIS_KLIEN = '2026-10-02';
 
 /* ============================================================
    TaniPintar — inti aplikasi
@@ -2146,6 +2207,41 @@ function tutupModalDom() {
  * akan menumpuk dan pengguna harus menekan Kembali berkali-kali sebelum
  * benar-benar berpindah.
  */
+function tombolNav(t) {
+  return '<button onclick="pindah(\'' + t.k + '\')" class="' +
+    (S.tab === t.k ? 'aktif' : '') + '">' +
+    '<span class="ik">' + t.ik + '</span><span class="nm">' + esc(t.n) +
+    '</span></button>';
+}
+
+function namaTab(kunci) {
+  for (var i = 0; i < TAB.length; i++) {
+    if (TAB[i].k === kunci) return TAB[i].n;
+  }
+  return 'Lainnya';
+}
+
+/** Lembar berisi tab selebihnya, dalam kisi berikon. */
+function bukaMenuLainnya() {
+  var lain = tabLainnya();
+  var html = '<div class="kisiTab">';
+  for (var i = 0; i < lain.length; i++) {
+    html += '<button onclick="pindahDariMenu(\'' + lain[i].k + '\')" class="' +
+      (S.tab === lain[i].k ? 'aktif' : '') + '">' +
+      '<span class="ik">' + lain[i].ik + '</span>' + esc(lain[i].n) + '</button>';
+  }
+  html += '</div>';
+  modalBuka('Menu lainnya', html);
+}
+
+function pindahDariMenu(kunci) {
+  /* modalTutupLalu dipakai, bukan modalTutup lalu pindah: penutupan
+     modal menarik satu langkah riwayat secara asinkron, dan perpindahan
+     tab yang berjalan sebelum tarikan itu selesai akan terkena
+     popstate-nya. */
+  modalTutupLalu(function () { pindah(kunci); });
+}
+
 /* Tindakan yang menunggu langkah riwayat modal selesai ditarik. */
 var _lanjutSetelahRiwayat = null;
 /* Benar antara permintaan tutup dan popstate yang menyusulinya. */
@@ -2958,15 +3054,53 @@ var TAB = [
   { k: 'tentang', n: 'Tentang', ik: 'ℹ️' }
 ];
 
+/* Lima tujuan yang paling sering dibuka di lapangan. Sisanya tetap
+   ada, satu ketukan lebih jauh lewat tombol Lainnya — nav bawah
+   bekerja baik pada empat sampai lima tujuan, dan delapan belas tab
+   yang harus digeser mendatar sama repotnya di bawah maupun di atas. */
+var TAB_UTAMA = ['dasbor', 'petak', 'pokok', 'kalender'];
+
+function tabTersedia() {
+  return TAB.filter(function (t) { return !t.peran || bolehKelola(); });
+}
+
+function tabLainnya() {
+  return tabTersedia().filter(function (t) {
+    return TAB_UTAMA.indexOf(t.k) < 0;
+  });
+}
+
+/** Benar pada layar sempit, tempat lima tab dipakai. */
+function navRingkas() {
+  return window.innerWidth < 900;
+}
+
 function bangunNav() {
+  var nav0 = $('nav');
   var html = '';
-  for (var i = 0; i < TAB.length; i++) {
-    var t = TAB[i];
-    if (t.peran && !bolehKelola()) continue;
-    html += '<button onclick="pindah(\'' + t.k + '\')" class="' +
-            (S.tab === t.k ? 'aktif' : '') + '">' +
-            '<span class="ik">' + t.ik + '</span>' + esc(t.n) + '</button>';
+
+  if (navRingkas()) {
+    var utama = tabTersedia().filter(function (t) {
+      return TAB_UTAMA.indexOf(t.k) >= 0;
+    });
+    for (var u = 0; u < utama.length; u++) {
+      html += tombolNav(utama[u]);
+    }
+    /* Tab yang sedang aktif tetapi berada di dalam daftar Lainnya
+       ditandai titik, supaya pengguna tidak kehilangan petunjuk sedang
+       berada di mana. */
+    var diLainnya = TAB_UTAMA.indexOf(S.tab) < 0;
+    html += '<button id="navLainnya" onclick="bukaMenuLainnya()" class="' +
+      (diLainnya ? 'aktif adaIsiAktif' : '') + '" aria-label="Menu lainnya">' +
+      '<span class="ik">☰</span><span class="nm">' +
+      (diLainnya ? esc(namaTab(S.tab)) : 'Lainnya') + '</span></button>';
+    if (nav0) nav0.classList.add('limaTab');
+  } else {
+    var semua = tabTersedia();
+    for (var i = 0; i < semua.length; i++) html += tombolNav(semua[i]);
+    if (nav0) nav0.classList.remove('limaTab');
   }
+
   $('nav').innerHTML = html;
 
   /* Nav utama dibungkus sekali saja, saat pertama kali dibangun. */
@@ -3264,8 +3398,57 @@ function render() {
   setTimeout(function () {
     tampakkanTabAktif();
     perbaruiPetunjukGulir();
+    aturRuangBawah();
   }, 0);
 }
+
+/**
+ * Memberi ruang di bawah isi halaman seukuran tinggi nav yang
+ * sebenarnya, dan menaikkan pesan singkat agar tidak tertutup.
+ *
+ * Tingginya diukur, bukan ditebak: nav bawah ikut menambah ruang aman
+ * bilah gestur yang berbeda-beda antarperangkat, dan angka tetap
+ * seperti 74px akan meleset di sebagian ponsel.
+ */
+function aturRuangBawah() {
+  var nav = $('nav');
+  if (!nav) return;
+  /* Yang diukur adalah PEMBUNGKUSNYA: pada layar sempit, pembungkus
+     itulah yang berposisi tetap di bawah dan yang tingginya sudah
+     termasuk ruang aman bilah gestur. */
+  var wadah = nav.parentNode && nav.parentNode.classList.contains('navUtama')
+    ? nav.parentNode : nav;
+  var tinggi = Math.round(wadah.getBoundingClientRect().height);
+  var diBawah = window.innerWidth < 900;
+  document.documentElement.style.setProperty('--tinggiNav',
+    (diBawah ? tinggi : 0) + 'px');
+
+  /* Header juga menempel; tingginya dipakai agar gulir-ke-dalam-pandangan
+     tidak menyembunyikan isi di balik header. */
+  var atas = $('atas');
+  if (atas) {
+    document.documentElement.style.setProperty('--tinggiAtas',
+      Math.round(atas.getBoundingClientRect().height) + 'px');
+  }
+}
+
+/* Nav disusun ulang saat lebar layar melewati ambang 900 piksel —
+   misalnya saat tablet diputar. Tanpa ini, tablet yang dibuka dalam
+   posisi tegak akan tetap menampilkan lima tab setelah diputar
+   mendatar, padahal ruangnya sudah cukup untuk semuanya. */
+(function () {
+  var lebarTerakhir = window.innerWidth;
+  window.addEventListener('resize', function () {
+    var sekarang = window.innerWidth;
+    if ((lebarTerakhir < 900) !== (sekarang < 900)) {
+      lebarTerakhir = sekarang;
+      if (S.siap) render();
+    } else {
+      lebarTerakhir = sekarang;
+      aturRuangBawah();
+    }
+  });
+})();
 
 /**
  * Spanduk versi demo. Dipisah agar bisa tampil pada layar masuk juga —
@@ -9938,6 +10121,12 @@ function bagianVersi() {
      daftar perubahan kode. Pengguna perlu tahu apa yang berubah bagi
      dirinya, bukan nama fungsi yang diperbaiki. */
   html += '<div class="kartu"><h3>Riwayat perubahan</h3>' +
+    catatanVersi('1.16.0', '2 Oktober 2026', [
+      'Menu pindah ke dasar layar pada ponsel — terjangkau ibu jari sambil ' +
+        'berdiri di kebun',
+      'Lima tujuan utama di menu bawah; tab lainnya lewat tombol Lainnya',
+      'Di layar lebar, seluruh tab tetap tampil di atas seperti sebelumnya'
+    ]) +
     catatanVersi('1.15.0', '27 September 2026', [
       'Perbaikan: menggeser foto di keterangan peta tidak lagi menutup ' +
         'keterangannya — kini berpindah foto seperti seharusnya',
