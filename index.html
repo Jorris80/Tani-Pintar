@@ -1563,8 +1563,8 @@ if ('serviceWorker' in navigator) {
 <script>
 
 /* Versi antarmuka. HARUS naik bersama APP_VERSI di Code.gs. */
-var VERSI_KLIEN = '1.16.0';
-var TANGGAL_RILIS_KLIEN = '2026-10-02';
+var VERSI_KLIEN = '1.17.0';
+var TANGGAL_RILIS_KLIEN = '2026-10-03';
 
 /* ============================================================
    TaniPintar — inti aplikasi
@@ -10121,6 +10121,13 @@ function bagianVersi() {
      daftar perubahan kode. Pengguna perlu tahu apa yang berubah bagi
      dirinya, bukan nama fungsi yang diperbaiki. */
   html += '<div class="kartu"><h3>Riwayat perubahan</h3>' +
+    catatanVersi('1.17.0', '3 Oktober 2026', [
+      'Lapisan tindih format GeoTIFF — batas koordinatnya terbaca otomatis ' +
+        'dari berkasnya, tidak perlu diketik',
+      'Mendukung WGS84, seluruh zona UTM, dan Web Mercator',
+      'Citra satu band seperti NDVI ditampilkan dengan gradasi warna',
+      'Bagian kosong di tepi citra dibuat tembus pandang'
+    ]) +
     catatanVersi('1.16.0', '2 Oktober 2026', [
       'Menu pindah ke dasar layar pada ponsel — terjangkau ibu jari sambil ' +
         'berdiri di kebun',
@@ -14179,7 +14186,13 @@ function formTambahOverlay() {
     '<button class="tbl lebar" onclick="pilihBerkasOverlay(\'gambar\')">' +
     '🖼️ Pilih gambar (PNG / JPG)</button>' +
     '<button class="tbl lebar" onclick="pilihBerkasOverlay(\'pdf\')">' +
-    '📄 Pilih PDF</button></div>' +
+    '📄 Pilih PDF</button>' +
+    '<button class="tbl lebar" onclick="pilihBerkasOverlay(\'geotiff\')">' +
+    '🛰️ Pilih GeoTIFF (.tif)</button></div>' +
+    '<div class="spanduk hijau"><span>🧭</span><span>' +
+    '<b>GeoTIFF membawa koordinatnya sendiri</b>Berbeda dari gambar biasa dan ' +
+    'PDF, berkas GeoTIFF menyimpan letak geografisnya di dalam berkas. Batasnya ' +
+    'terbaca otomatis — Anda tidak perlu mengetik apa pun.</span></div>' +
     '<div class="spanduk kuning"><span>🧭</span><span>' +
     '<b>Koordinatnya Anda yang menentukan</b>Aplikasi ini tidak membaca ' +
     'georeferensi yang tertanam di dalam PDF. Menebaknya berarti menempatkan ' +
@@ -14191,12 +14204,14 @@ function formTambahOverlay() {
 
 function pilihBerkasOverlay(jenis) {
   var opsi = jenis === 'pdf' ? { accept: '.pdf,application/pdf' }
-                             : { accept: 'image/png,image/jpeg' };
+    : (jenis === 'geotiff' ? { accept: '.tif,.tiff,image/tiff' }
+                           : { accept: 'image/png,image/jpeg' });
   bukaPemilihBerkas(opsi, function (berkas) {
     var b = berkas[0];
     tandaiOverlay('<div class="spanduk biru"><span class="muat"></span>' +
                   '<span>Memproses berkas…</span></div>');
     if (jenis === 'pdf') olahPdfOverlay(b);
+    else if (jenis === 'geotiff') olahGeoTiffOverlay(b);
     else olahGambarOverlay(b);
   });
 }
@@ -14359,7 +14374,8 @@ function olahPdfOverlay(berkas) {
    GEOREFERENSI DAN PENYIMPANAN
    ------------------------------------------------------------ */
 
-function siapkanOverlayBaru(dataUrl, lebar, tinggi, jenis, namaBerkas) {
+function siapkanOverlayBaru(dataUrl, lebar, tinggi, jenis, namaBerkas, batas,
+                            catatanBatas) {
   var potong = Math.ceil(dataUrl.length / 45000);
   _overlayBaru = { dataUrl: dataUrl, lebar: lebar, tinggi: tinggi,
                    jenis: jenis, nama: namaBerkas, potong: potong };
@@ -14380,15 +14396,19 @@ function siapkanOverlayBaru(dataUrl, lebar, tinggi, jenis, namaBerkas) {
     ' KB · ' + potong + ' bagian</span></div>' +
     '<div class="pratinjauOverlay"><img src="' + esc(dataUrl) + '" alt=""></div>' +
     '<hr class="pisah"><h4>Batas koordinat</h4>' +
-    '<p style="font-size:.82rem;color:var(--redup)">Masukkan koordinat sudut ' +
-    'gambar. Cara termudah: pilih petak yang tergambar di dalamnya, lalu ' +
-    'sesuaikan angkanya.</p>' +
-    pilihPetakUntukBatas() +
+    (batas
+      ? '<div class="spanduk hijau"><span>🧭</span><span>' +
+        '<b>Terbaca dari berkas</b>' + esc(catatanBatas || '') +
+        '<br>Angka di bawah sudah terisi. Periksa letaknya di peta setelah ' +
+        'disimpan; bila meleset, perbaiki angkanya.</span></div>'
+      : '<p style="font-size:.82rem;color:var(--redup)">Masukkan koordinat sudut ' +
+        'gambar. Cara termudah: pilih petak yang tergambar di dalamnya, lalu ' +
+        'sesuaikan angkanya.</p>' + pilihPetakUntukBatas()) +
     '<div class="kisi kisi2">' +
-    ruasBatas('ovlUtara', 'Utara (lintang)') +
-    ruasBatas('ovlSelatan', 'Selatan (lintang)') +
-    ruasBatas('ovlTimur', 'Timur (bujur)') +
-    ruasBatas('ovlBarat', 'Barat (bujur)') +
+    ruasBatas('ovlUtara', 'Utara (lintang)', batas && batas.utara) +
+    ruasBatas('ovlSelatan', 'Selatan (lintang)', batas && batas.selatan) +
+    ruasBatas('ovlTimur', 'Timur (bujur)', batas && batas.timur) +
+    ruasBatas('ovlBarat', 'Barat (bujur)', batas && batas.barat) +
     '</div>' +
     '<label class="ruas"><span class="nama">Nama lapisan</span>' +
     '<input type="text" id="ovlNama" value="' +
@@ -14399,10 +14419,11 @@ function siapkanOverlayBaru(dataUrl, lebar, tinggi, jenis, namaBerkas) {
     '💾 Simpan lapisan</button>');
 }
 
-function ruasBatas(id, label) {
+function ruasBatas(id, label, nilai) {
   return '<label class="ruas"><span class="nama">' + esc(label) + '</span>' +
-    '<input type="number" id="' + id + '" step="0.000001" inputmode="decimal">' +
-    '</label>';
+    '<input type="number" id="' + id + '" step="0.000001" inputmode="decimal"' +
+    (nilai || nilai === 0 ? ' value="' + Number(nilai).toFixed(6) + '"' : '') +
+    '></label>';
 }
 
 function pilihPetakUntukBatas() {
@@ -14509,6 +14530,354 @@ function simpanOverlayBaru() {
     tandaiOverlay('<div class="spanduk merah"><span>⚠️</span><span>' +
       esc(e.message) + '</span></div>');
   });
+}
+
+/* ============================================================
+   GEOTIFF
+   ============================================================
+   Berbeda dari gambar biasa dan PDF, GeoTIFF menyimpan letak
+   geografisnya DI DALAM berkas. Batasnya terbaca langsung, jadi
+   tidak ada yang perlu ditebak maupun diketik — inilah alasan
+   format ini jauh lebih dapat dipercaya sebagai lapisan tindih.
+
+   Yang didukung: lintang-bujur WGS84 (EPSG:4326), seluruh zona
+   UTM WGS84 (EPSG:32601–32660 utara dan 32701–32760 selatan),
+   serta Web Mercator (EPSG:3857). Sistem koordinat lain DITOLAK
+   dengan jelas — menebaknya berarti menempatkan citra ratusan
+   kilometer dari tempatnya tanpa satu pun tanda bahwa ada yang
+   salah.
+   ============================================================ */
+
+var _geoTiffSiap = false;
+
+function muatGeoTiff() {
+  if (_geoTiffSiap || window.GeoTIFF) { _geoTiffSiap = true; return Promise.resolve(); }
+  return new Promise(function (selesai, gagal) {
+    var sumber = modeGas()
+      ? (S.urlAplikasi || '') + '?pustaka=geotiff'
+      : 'vendor/geotiff.js';
+
+    var skrip = document.createElement('script');
+    skrip.src = sumber;
+    skrip.onload = function () {
+      if (!window.GeoTIFF) {
+        gagal(new Error('Pustaka GeoTIFF termuat tetapi tidak dapat dipakai.'));
+        return;
+      }
+      _geoTiffSiap = true;
+      selesai();
+    };
+    skrip.onerror = function () {
+      gagal(new Error(modeGas()
+        ? 'Pustaka pembaca GeoTIFF belum terpasang. Berkas GeoTiff.html perlu ' +
+          'ditambahkan ke proyek Apps Script oleh penyedia. Sementara itu, ubah ' +
+          'GeoTIFF menjadi PNG atau JPG lewat QGIS lalu unggah sebagai gambar — ' +
+          'batas koordinatnya diisi manual.'
+        : 'Pustaka pembaca GeoTIFF tidak dapat dimuat. Periksa sambungan ' +
+          'internet, lalu coba lagi.'));
+    };
+    document.head.appendChild(skrip);
+  });
+}
+
+/**
+ * Menerjemahkan kode EPSG menjadi cara menghitung lintang-bujur.
+ * Mengembalikan null bila sistemnya tidak dikenali — dan itu
+ * disampaikan apa adanya, bukan ditebak.
+ */
+function proyeksiGeoTiff(geoKeys) {
+  var g = geoKeys || {};
+  var proj = angka(g.ProjectedCSTypeGeoKey, 0);
+  var geog = angka(g.GeographicTypeGeoKey, 0);
+
+  if (!proj && (geog === 4326 || angka(g.GTModelTypeGeoKey, 0) === 2)) {
+    return { jenis: 'derajat', nama: 'WGS84 lintang-bujur (EPSG:4326)' };
+  }
+  if (proj === 4326) {
+    return { jenis: 'derajat', nama: 'WGS84 lintang-bujur (EPSG:4326)' };
+  }
+  if (proj === 3857 || proj === 900913 || proj === 3785) {
+    return { jenis: 'mercator', nama: 'Web Mercator (EPSG:' + proj + ')' };
+  }
+  /* 326xx = UTM utara, 327xx = UTM selatan, keduanya pada datum WGS84. */
+  if (proj >= 32601 && proj <= 32660) {
+    return { jenis: 'utm', zona: proj - 32600, selatan: false,
+             nama: 'UTM zona ' + (proj - 32600) + 'N (EPSG:' + proj + ')' };
+  }
+  if (proj >= 32701 && proj <= 32760) {
+    return { jenis: 'utm', zona: proj - 32700, selatan: true,
+             nama: 'UTM zona ' + (proj - 32700) + 'S (EPSG:' + proj + ')' };
+  }
+  return null;
+}
+
+/** Web Mercator (meter) ke lintang-bujur. */
+function mercatorKeLintangBujur(x, y) {
+  var R = 6378137.0;
+  var lng = (x / R) * 180 / Math.PI;
+  var lat = (2 * Math.atan(Math.exp(y / R)) - Math.PI / 2) * 180 / Math.PI;
+  return [lat, lng];
+}
+
+function titikProyeksi(x, y, proyeksi) {
+  if (proyeksi.jenis === 'derajat') return [y, x];
+  if (proyeksi.jenis === 'mercator') return mercatorKeLintangBujur(x, y);
+  return utmKeLintangBujur(x, y, proyeksi);   // dipakai bersama impor SHP
+}
+
+function olahGeoTiffOverlay(berkas) {
+  /* Berkas raksasa ditolak di depan. GeoTIFF dari drone lazim 50–500 MB;
+     menguraikannya di peramban ponsel berakhir dengan kehabisan memori —
+     dan kehabisan memori mematikan halaman tanpa pesan yang berguna. */
+  var batasMb = 120;
+  if (berkas.size > batasMb * 1048576) {
+    tandaiOverlay('<div class="spanduk merah"><span>⚠️</span><span>' +
+      '<b>Berkas terlalu besar</b>' + Math.round(berkas.size / 1048576) +
+      ' MB, batas ' + batasMb + ' MB. Peramban ponsel akan kehabisan memori ' +
+      'sebelum selesai membacanya.<br><br>Perkecil dulu di QGIS: <i>Raster → ' +
+      'Extraction → Clip Raster by Extent</i> untuk memotong wilayah yang ' +
+      'diperlukan, atau <i>Export → Save As</i> dengan kompresi dan resolusi ' +
+      'lebih rendah.</span></div>');
+    return;
+  }
+
+  muatGeoTiff().then(function () {
+    return berkas.arrayBuffer();
+  }).then(function (buf) {
+    return window.GeoTIFF.fromArrayBuffer(buf);
+  }).then(function (tiff) {
+    return tiff.getImage();
+  }).then(function (gambar) {
+    var geoKeys = gambar.getGeoKeys ? gambar.getGeoKeys() : null;
+
+    /* Berkas tanpa kunci geografis SAMA SEKALI dibedakan dari berkas
+       yang sistem koordinatnya tidak didukung. Keduanya gagal, tetapi
+       jalan keluarnya berbeda: yang pertama perlu diberi georeferensi
+       atau diunggah sebagai gambar biasa, yang kedua perlu diproyeksikan
+       ulang. Menyamakan pesannya akan mengirim orang ke QGIS untuk
+       memproyeksikan berkas yang tidak punya proyeksi. */
+    var adaKunci = geoKeys && Object.keys(geoKeys).length > 0;
+    if (!adaKunci) {
+      throw new Error('TANPA_GEOREFERENSI');
+    }
+
+    var proyeksi = proyeksiGeoTiff(geoKeys);
+    if (!proyeksi) {
+      throw new Error('SISTEM_TIDAK_DIKENAL:' +
+        JSON.stringify(geoKeys).substring(0, 200));
+    }
+
+    var bbox = gambar.getBoundingBox();     // [barat, selatan, timur, utara]
+    if (!bbox || bbox.length < 4) {
+      throw new Error('TANPA_GEOREFERENSI');
+    }
+
+    var kiriBawah = titikProyeksi(bbox[0], bbox[1], proyeksi);
+    var kananAtas = titikProyeksi(bbox[2], bbox[3], proyeksi);
+    var batas = { selatan: kiriBawah[0], barat: kiriBawah[1],
+                  utara: kananAtas[0], timur: kananAtas[1] };
+
+    if (batas.utara <= batas.selatan || batas.timur <= batas.barat) {
+      throw new Error('Batas yang terbaca dari berkas tidak masuk akal ' +
+        '(utara ' + batas.utara.toFixed(5) + ', selatan ' +
+        batas.selatan.toFixed(5) + '). Berkas mungkin rusak.');
+    }
+
+    /* Ukuran keluaran dibatasi: citra penuh berukuran puluhan ribu piksel
+       tidak mungkin disimpan, dan untuk dibandingkan dengan batas petak
+       2000 piksel sudah lebih dari cukup. readRasters melakukan
+       pengambilan contoh ulang sendiri, memakai tingkat ikhtisar bila
+       berkasnya menyediakannya — jauh lebih ringan daripada membaca
+       seluruh piksel lalu mengecilkannya. */
+    var lebarAsli = gambar.getWidth(), tinggiAsli = gambar.getHeight();
+    var sisi = 2000;
+    var lebar = lebarAsli, tinggi = tinggiAsli;
+    if (lebar > sisi || tinggi > sisi) {
+      if (lebar > tinggi) { tinggi = Math.round(tinggi * sisi / lebar); lebar = sisi; }
+      else { lebar = Math.round(lebar * sisi / tinggi); tinggi = sisi; }
+    }
+
+    var nodata = null;
+    try {
+      var nd = gambar.getGDALNoData();
+      if (nd !== null && nd !== undefined) nodata = Number(nd);
+    } catch (e) { /* tidak ada */ }
+
+    return gambar.readRasters({ width: lebar, height: tinggi })
+      .then(function (raster) {
+        return { raster: raster, lebar: lebar, tinggi: tinggi, batas: batas,
+                 proyeksi: proyeksi, nodata: nodata,
+                 band: gambar.getSamplesPerPixel(),
+                 asli: lebarAsli + '×' + tinggiAsli };
+      });
+  }).then(function (h) {
+    gambarkanRasterGeoTiff(h, berkas.name || 'GeoTIFF');
+  }).catch(function (e) {
+    var pesan = String(e.message || e);
+    if (pesan === 'TANPA_GEOREFERENSI') {
+      tandaiOverlay('<div class="spanduk kuning"><span>📐</span><span>' +
+        '<b>Berkas ini tidak memuat letak geografis</b>Kemungkinan TIFF biasa, ' +
+        'bukan GeoTIFF — atau georeferensinya tersimpan di berkas pendamping ' +
+        '(.tfw) yang tidak ikut terbaca.<br><br>Dua jalan keluar: unggah sebagai ' +
+        '<b>gambar biasa</b> lalu isi batas koordinatnya sendiri, atau beri ' +
+        'georeferensi dulu di QGIS lewat <i>Raster → Georeferencer</i>.' +
+        '</span></div>');
+      return;
+    }
+    if (pesan.indexOf('SISTEM_TIDAK_DIKENAL:') === 0) {
+      tandaiOverlay('<div class="spanduk merah"><span>🧭</span><span>' +
+        '<b>Sistem koordinat tidak dikenali</b>Aplikasi ini mengenali WGS84 ' +
+        'lintang-bujur (EPSG:4326), seluruh zona UTM WGS84 (EPSG:32601–32760), ' +
+        'dan Web Mercator (EPSG:3857).<br><br>Sistem lain tidak ditebak: ' +
+        'menebaknya berarti menempatkan citra ratusan kilometer dari tempatnya ' +
+        'tanpa satu pun tanda bahwa ada yang salah.<br><br>Ubah dulu di QGIS: ' +
+        '<i>Raster → Projections → Warp (Reproject)</i> ke EPSG:4326 atau zona ' +
+        'UTM yang sesuai.<br><br><small>Kunci yang terbaca: ' +
+        esc(pesan.substring(21)) + '</small></span></div>');
+      return;
+    }
+    tandaiOverlay('<div class="spanduk merah"><span>⚠️</span><span>' +
+      '<b>GeoTIFF tidak dapat dibaca</b>' + esc(pesan) + '</span></div>');
+  });
+}
+
+/**
+ * Menggambar data raster menjadi gambar yang dapat ditampilkan.
+ *
+ * Tiga atau empat band diperlakukan sebagai warna. SATU band —
+ * NDVI, ketinggian, kelembapan — berisi angka, bukan warna: bila
+ * digambar apa adanya hasilnya hitam pekat, karena nilainya jauh di
+ * luar rentang 0–255. Karena itu nilainya diregangkan ke rentang
+ * yang terlihat lalu diberi gradasi warna.
+ */
+function gambarkanRasterGeoTiff(h, namaBerkas) {
+  var kanvas = document.createElement('canvas');
+  kanvas.width = h.lebar;
+  kanvas.height = h.tinggi;
+  var ktx = kanvas.getContext('2d');
+  var citra = ktx.createImageData(h.lebar, h.tinggi);
+  var piksel = citra.data;
+  var jml = h.lebar * h.tinggi;
+  var adaTembus = false;
+  var keterangan = '';
+
+  function sahkan(v) {
+    if (v === null || v === undefined) return false;
+    if (typeof v === 'number' && !isFinite(v)) return false;
+    if (h.nodata !== null && v === h.nodata) return false;
+    return true;
+  }
+
+  if (h.band >= 3) {
+    var r = h.raster[0], g = h.raster[1], b = h.raster[2];
+    var a = h.band >= 4 ? h.raster[3] : null;
+    for (var i = 0; i < jml; i++) {
+      var kosong = !sahkan(r[i]) || (a && a[i] === 0);
+      piksel[i * 4] = r[i];
+      piksel[i * 4 + 1] = g[i];
+      piksel[i * 4 + 2] = b[i];
+      piksel[i * 4 + 3] = kosong ? 0 : (a ? a[i] : 255);
+      if (kosong) adaTembus = true;
+    }
+    keterangan = h.band + ' band warna';
+  } else {
+    var d = h.raster[0];
+    /* Peregangan memakai persentil 2–98, bukan nilai terkecil dan
+       terbesar: satu piksel rusak atau tepi gelap sudah cukup membuat
+       peregangan min–maks menghasilkan citra yang nyaris rata. */
+    var sah = [];
+    for (var s = 0; s < jml; s += Math.max(1, Math.floor(jml / 20000))) {
+      if (sahkan(d[s])) sah.push(d[s]);
+    }
+    if (!sah.length) {
+      tandaiOverlay('<div class="spanduk merah"><span>⚠️</span><span>' +
+        'Seluruh piksel bernilai kosong — tidak ada yang dapat ditampilkan.' +
+        '</span></div>');
+      return;
+    }
+    sah.sort(function (x, y) { return x - y; });
+    var bawah = sah[Math.floor(sah.length * 0.02)];
+    var atas = sah[Math.floor(sah.length * 0.98)];
+    if (atas <= bawah) { atas = sah[sah.length - 1]; bawah = sah[0]; }
+    if (atas <= bawah) atas = bawah + 1;
+
+    for (var j = 0; j < jml; j++) {
+      if (!sahkan(d[j])) {
+        piksel[j * 4 + 3] = 0;
+        adaTembus = true;
+        continue;
+      }
+      var t = (d[j] - bawah) / (atas - bawah);
+      t = t < 0 ? 0 : (t > 1 ? 1 : t);
+      var w = gradasiHijau(t);
+      piksel[j * 4] = w[0];
+      piksel[j * 4 + 1] = w[1];
+      piksel[j * 4 + 2] = w[2];
+      piksel[j * 4 + 3] = 255;
+    }
+    keterangan = 'satu band, diregangkan ' +
+      (Math.round(bawah * 1000) / 1000) + ' – ' + (Math.round(atas * 1000) / 1000) +
+      ' dengan gradasi warna';
+  }
+
+  ktx.putImageData(citra, 0, 0);
+
+  /* PNG dipakai bila ada bagian tembus pandang — JPEG tidak mendukungnya,
+     dan tepi citra drone yang hitam akan menutupi peta dasar. PNG jauh
+     lebih besar, jadi ukurannya diturunkan bertahap sampai muat. */
+  kecilkanSampaiMuat(kanvas, adaTembus, function (dataUrl, lebarAkhir,
+                                                 tinggiAkhir) {
+    siapkanOverlayBaru(dataUrl, lebarAkhir, tinggiAkhir, 'geotiff', namaBerkas,
+      h.batas,
+      h.proyeksi.nama + ' · ' + h.asli + ' piksel asli · ' + keterangan +
+      (adaTembus ? ' · bagian kosong dibuat tembus pandang' : ''));
+  });
+}
+
+/** Gradasi cokelat–kuning–hijau, lazim dipakai untuk NDVI. */
+function gradasiHijau(t) {
+  if (t < 0.5) {
+    var u = t * 2;
+    return [Math.round(140 + 95 * u), Math.round(90 + 125 * u),
+            Math.round(50 + 30 * u)];
+  }
+  var v = (t - 0.5) * 2;
+  return [Math.round(235 - 190 * v), Math.round(215 - 80 * v),
+          Math.round(80 - 30 * v)];
+}
+
+/**
+ * Menurunkan ukuran sampai hasilnya muat dalam batas potongan.
+ *
+ * Dicoba bertahap, bukan sekali tebak: ukuran berkas hasil sangat
+ * bergantung pada isi citranya, dan menebak satu angka berakhir
+ * dengan menolak citra yang sebenarnya masih muat.
+ */
+function kecilkanSampaiMuat(kanvas, pakaiPng, selesai) {
+  var lebar = kanvas.width, tinggi = kanvas.height;
+  var mutu = 0.82;
+
+  for (var putaran = 0; putaran < 6; putaran++) {
+    var k = kanvas;
+    if (lebar !== kanvas.width) {
+      k = document.createElement('canvas');
+      k.width = lebar; k.height = tinggi;
+      var c = k.getContext('2d');
+      c.imageSmoothingEnabled = true;
+      if ('imageSmoothingQuality' in c) c.imageSmoothingQuality = 'high';
+      c.drawImage(kanvas, 0, 0, lebar, tinggi);
+    }
+    var keluar = pakaiPng ? k.toDataURL('image/png')
+                          : k.toDataURL('image/jpeg', mutu);
+    if (keluar.length <= 40 * 45000 || lebar <= 500) {
+      selesai(keluar, lebar, tinggi);
+      return;
+    }
+    lebar = Math.round(lebar * 0.75);
+    tinggi = Math.round(tinggi * 0.75);
+    if (!pakaiPng && mutu > 0.5) mutu -= 0.1;
+  }
+  selesai(kanvas.toDataURL('image/jpeg', 0.6), kanvas.width, kanvas.height);
 }
 
 </script>
